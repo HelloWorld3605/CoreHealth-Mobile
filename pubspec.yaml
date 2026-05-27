@@ -1,0 +1,51 @@
+name: corehealth_flutter
+description: CoreHealth — ứng dụng sức khỏe cá nhân hóa cho người Việt Nam.
+publish_to: "none"
+
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.4.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  google_fonts: ^6.2.1
+  crypto: ^3.0.6
+  sqflite: ^2.4.2
+  sqflite_common_ffi: ^2.4.0+2
+  path: ^1.9.1
+  http: ^1.2.2
+  cached_network_image: ^3.4.1
+  image_picker: ^1.1.2
+  flutter_local_notifications: ^18.0.1
+  timezone: ^0.9.4
+  google_sign_in: ^6.2.1
+  flutter_secure_storage: ^9.2.4
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+  flutter_launcher_icons: ^0.14.3
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/logocorehealth.png
+    - assets/images/onboarding/
+    - assets/images/onboarding/male_body/
+    - assets/images/onboarding/size_body/
+
+# Run: dart run flutter_launcher_icons
+# Place your 1024x1024 icon at assets/icon/app_icon.png first
+flutter_launcher_icons:
+  android: true
+  ios: false
+  image_path: "assets/icon/app_icon.png"
+  adaptive_icon_background: "#00000000"
+  adaptive_icon_foreground: "assets/icon/app_icon_foreground.png"
+  remove_alpha_ios: true
+  web:
+    generate: false

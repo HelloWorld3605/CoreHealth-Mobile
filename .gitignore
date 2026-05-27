@@ -1,0 +1,53 @@
+# Flutter/Dart
+.dart_tool/
+.idea/
+.packages
+.flutter-plugins
+.flutter-plugins-dependencies
+.metadata
+.pub-cache/
+.pub/
+build/
+
+# Android / iOS generated
+/android/
+/ios/
+/linux/
+/macos/
+/web/
+/windows/
+
+# Tooling artifacts
+.playwright-cli/
+output/
+backend/target/
+backend/temp/
+backend-run.err
+backend-run.log
+backend-run.out
+run-backend-temp.ps1
+web-react/dist/
+web-react/node_modules/
+web-react/tsconfig.tsbuildinfo
+web-react/.env
+web-react/.env.local
+web-react/fe-run.log
+web-react/vite*.err
+web-react/vite*.out
+web-react/vite*.log
+.env
+.env.local
+
+# Claude Code metadata
+.claude/
+.claude-code/
+
+# Backend dev launcher (contains local secrets)
+backend/run-backend-temp.ps1
+backend/spring-boot.log
+backend/spring-boot.log.err
+web-run.err
+web-run.out
+
+# Reference demo install
+_reference_demo/node_modules/
