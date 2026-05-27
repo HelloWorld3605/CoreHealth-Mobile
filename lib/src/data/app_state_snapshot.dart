@@ -164,6 +164,9 @@ Map<String, Object?> _demoProfileToJson(DemoProfile profile) {
     'nutritionPriorities': profile.nutritionPriorities,
     'plan': profile.plan.name,
     'subscriptionMonths': profile.subscriptionMonths,
+    'tokenBalance': profile.tokenBalance,
+    'tokenEarned': profile.tokenEarned,
+    'tokenSpent': profile.tokenSpent,
     'subscriptionStartDate': profile.subscriptionStartDate?.toIso8601String(),
     'coreHealthMaxTrialExpiresAt':
         profile.coreHealthMaxTrialExpiresAt?.toIso8601String(),
@@ -227,6 +230,12 @@ DemoProfile _demoProfileFromJson(Map<String, dynamic> json) {
     ),
     subscriptionMonths: json['subscriptionMonths'] as int? ??
         DemoData.initialProfile.subscriptionMonths,
+    tokenBalance:
+        json['tokenBalance'] as int? ?? DemoData.initialProfile.tokenBalance,
+    tokenEarned:
+        json['tokenEarned'] as int? ?? DemoData.initialProfile.tokenEarned,
+    tokenSpent:
+        json['tokenSpent'] as int? ?? DemoData.initialProfile.tokenSpent,
     subscriptionStartDate: json['subscriptionStartDate'] == null
         ? null
         : DateTime.tryParse(json['subscriptionStartDate'] as String),

@@ -23,6 +23,8 @@ dependencies:
   timezone: ^0.9.4
   google_sign_in: ^6.2.1
   flutter_secure_storage: ^9.2.4
+  mailer: ^7.1.0
+  postgres: ^3.5.11
 
 dev_dependencies:
   flutter_test:

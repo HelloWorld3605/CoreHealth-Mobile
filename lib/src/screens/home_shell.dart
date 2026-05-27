@@ -15,6 +15,15 @@ import 'food_scan_sheet.dart';
 import 'payment_screen.dart';
 import 'health_history_screen.dart';
 
+void _showFoodScanSheet(BuildContext context) {
+  showModalBottomSheet(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    builder: (_) => const FoodScanSheet(),
+  );
+}
+
 class HomeShell extends StatefulWidget {
   const HomeShell({super.key});
 
@@ -26,12 +35,7 @@ class _HomeShellState extends State<HomeShell> {
   bool _offerScheduled = false;
 
   void _showFoodScan(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => const FoodScanSheet(),
-    );
+    _showFoodScanSheet(context);
   }
 
   void _showMoreMenu(BuildContext context) {
@@ -103,7 +107,7 @@ class _HomeShellState extends State<HomeShell> {
           IndexedStack(
             index: controller.currentTab,
             children: const [
-              DashboardScreen(),
+              _LegacyDashboardScreen(),
               MealPlanScreen(),
               WorkoutPlanScreen(),
               ShopScreen(),
@@ -132,7 +136,7 @@ class _HomeShellState extends State<HomeShell> {
               foregroundColor: AppPalette.text,
               elevation: 4,
               icon: const Icon(Icons.smart_toy_rounded),
-              label: const Text('AI Coach'),
+              label: const Text('Chat với AI'),
             ),
           ),
         ],
@@ -159,27 +163,28 @@ class _HomeShellState extends State<HomeShell> {
             messenger.showSnackBar(
               const SnackBar(
                 content: Text(
-                  'Bạn được miễn phí CoreHealth Max trong vòng 7 ngày.',
+                  'Bạn đã nhận 25 token miễn phí để dùng thử AI.',
                 ),
               ),
             );
           },
-          onPayment: (plan, amountK) {
+          onPayment: (pack) {
             final navigator = Navigator.of(sheetContext);
             final messenger = ScaffoldMessenger.of(context);
             navigator.pop();
             Navigator.of(context).push(
               MaterialPageRoute<void>(
                 builder: (_) => PaymentScreen(
-                  amountK: amountK,
-                  description: '${plan.title} - 1 tháng',
+                  amountK: pack.priceK,
+                  description:
+                      '${pack.title} token pack - ${pack.tokens} token',
                   onSuccess: () {
-                    controller.activatePaidSubscription(plan, months: 1);
+                    controller.activateTokenPack(pack);
                     Navigator.of(context).pop();
                     messenger.showSnackBar(
                       SnackBar(
                         content: Text(
-                          'Đã kích hoạt ${plan.title}: 1 tháng + 7 ngày Max miễn phí',
+                          'Đã nạp ${pack.tokens} token vào ví CoreHealth.',
                         ),
                       ),
                     );
@@ -188,7 +193,7 @@ class _HomeShellState extends State<HomeShell> {
                     messenger.showSnackBar(
                       const SnackBar(
                         content: Text(
-                          'Chưa nhận được thanh toán. Bạn vẫn có 7 ngày CoreHealth Max miễn phí.',
+                          'Chưa nhận được thanh toán. Token miễn phí vẫn ở trong ví của bạn.',
                         ),
                         backgroundColor: Colors.orange,
                       ),
@@ -215,7 +220,7 @@ class _PostOnboardingOfferSheet extends StatefulWidget {
   });
 
   final VoidCallback onClose;
-  final void Function(SubscriptionPlan plan, int amountK) onPayment;
+  final void Function(TokenPack pack) onPayment;
 
   @override
   State<_PostOnboardingOfferSheet> createState() =>
@@ -223,14 +228,8 @@ class _PostOnboardingOfferSheet extends StatefulWidget {
 }
 
 class _PostOnboardingOfferSheetState extends State<_PostOnboardingOfferSheet> {
-  SubscriptionPlan _selectedPlan = SubscriptionPlan.max;
-
-  int get _selectedAmountK => switch (_selectedPlan) {
-        SubscriptionPlan.meal => 99,
-        SubscriptionPlan.workout => 89,
-        SubscriptionPlan.max => 159,
-        SubscriptionPlan.free => 0,
-      };
+  TokenPack _selectedPack =
+      tokenPacks.firstWhere((pack) => pack.id == TokenPackId.basic);
 
   @override
   Widget build(BuildContext context) {
@@ -320,7 +319,7 @@ class _PostOnboardingOfferSheetState extends State<_PostOnboardingOfferSheet> {
                               crossAxisAlignment: WrapCrossAlignment.center,
                               children: [
                                 Text(
-                                  'CoreHealth Max',
+                                  'Token Wallet',
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: tt.titleLarge?.copyWith(
@@ -342,7 +341,7 @@ class _PostOnboardingOfferSheetState extends State<_PostOnboardingOfferSheet> {
                                     ),
                                   ),
                                   child: Text(
-                                    '7 ngày miễn phí',
+                                    '25 token miễn phí',
                                     style: tt.labelSmall?.copyWith(
                                       color: AppPalette.emeraldDeep,
                                       fontWeight: FontWeight.w900,
@@ -353,7 +352,7 @@ class _PostOnboardingOfferSheetState extends State<_PostOnboardingOfferSheet> {
                             ),
                             const SizedBox(height: 7),
                             Text(
-                              'Tự động kích hoạt cho người mới. Nếu mua gói hôm nay, 7 ngày Max vẫn được cộng thêm.',
+                              'Một ví token dùng chung cho AI chat, scan món ăn, meal plan, workout plan và Smart Rebalance.',
                               style: tt.bodyMedium?.copyWith(
                                 color: AppPalette.emeraldDeep
                                     .withValues(alpha: 0.82),
@@ -378,33 +377,22 @@ class _PostOnboardingOfferSheetState extends State<_PostOnboardingOfferSheet> {
                   ),
                   child: Column(
                     children: [
-                      _OfferPlanRow(
-                        title: 'CoreHealth Meal',
-                        price: '99k/tháng',
-                        detail: 'Meal 1 tháng + 7 ngày Max',
-                        selected: _selectedPlan == SubscriptionPlan.meal,
-                        onTap: () => setState(
-                            () => _selectedPlan = SubscriptionPlan.meal),
-                      ),
-                      const SizedBox(height: 4),
-                      _OfferPlanRow(
-                        title: 'CoreHealth Workout',
-                        price: '89k/tháng',
-                        detail: 'Workout 1 tháng + 7 ngày Max',
-                        selected: _selectedPlan == SubscriptionPlan.workout,
-                        onTap: () => setState(
-                            () => _selectedPlan = SubscriptionPlan.workout),
-                      ),
-                      const SizedBox(height: 4),
-                      _OfferPlanRow(
-                        title: 'CoreHealth Max',
-                        price: '159k/tháng',
-                        detail: 'Max 1 tháng + 7 ngày miễn phí',
-                        selected: _selectedPlan == SubscriptionPlan.max,
-                        badge: '7 ngày miễn phí',
-                        onTap: () => setState(
-                            () => _selectedPlan = SubscriptionPlan.max),
-                      ),
+                      ...tokenPacks.take(4).map(
+                            (pack) => Padding(
+                              padding: const EdgeInsets.only(bottom: 4),
+                              child: _OfferPlanRow(
+                                title: pack.title,
+                                price: '${pack.priceK}k',
+                                detail:
+                                    '${pack.tokens} token • ~${pack.pricePerToken}đ/token',
+                                selected: _selectedPack.id == pack.id,
+                                badge: pack.recommended ? 'Phổ biến' : null,
+                                onTap: () => setState(
+                                  () => _selectedPack = pack,
+                                ),
+                              ),
+                            ),
+                          ),
                     ],
                   ),
                 ),
@@ -428,11 +416,10 @@ class _PostOnboardingOfferSheetState extends State<_PostOnboardingOfferSheet> {
                     ),
                     child: ElevatedButton.icon(
                       onPressed: () => widget.onPayment(
-                        _selectedPlan,
-                        _selectedAmountK,
+                        _selectedPack,
                       ),
                       icon: const Icon(Icons.payment_rounded),
-                      label: Text('Thanh toán ${_selectedAmountK}k'),
+                      label: Text('Nạp ${_selectedPack.tokens} token'),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.transparent,
                         shadowColor: Colors.transparent,
@@ -467,7 +454,7 @@ class _PostOnboardingOfferSheetState extends State<_PostOnboardingOfferSheet> {
                       const SizedBox(width: 10),
                       Expanded(
                         child: Text(
-                          'Bạn đã có 7 ngày Max miễn phí. Chỉ thanh toán nếu muốn giữ gói đã chọn sau thời gian dùng thử.',
+                          'Tracking cơ bản miễn phí. Chỉ AI action mới trừ token và luôn hiển thị chi phí trước khi dùng.',
                           style: tt.titleSmall?.copyWith(
                             color: AppPalette.emeraldDeep,
                             fontWeight: FontWeight.w800,
@@ -703,7 +690,7 @@ class DashboardScreen extends StatelessWidget {
               ),
               const SizedBox(height: 22),
               _DashboardWeeklyCard(
-                planTitle: profile.plan.title,
+                planTitle: '${profile.tokenBalance} token',
                 title: 'Tiến trình tuần này',
                 subtitle:
                     'Giữ nhịp ${profile.goal.title.toLowerCase()} thật đều để kết quả đến tự nhiên.',
@@ -1601,7 +1588,8 @@ class _LegacyDashboardScreen extends StatelessWidget {
                     children: [
                       Row(
                         children: [
-                          _DashboardPlanPill(label: profile.plan.title),
+                          _DashboardPlanPill(
+                              label: '${profile.tokenBalance} token'),
                           const Spacer(),
                           Container(
                             width: 46,
@@ -1643,13 +1631,10 @@ class _LegacyDashboardScreen extends StatelessWidget {
                             ),
                       ),
                       const SizedBox(height: 18),
-                      _DashboardUpgradeBanner(
-                        actionLabel: profile.plan == SubscriptionPlan.max
-                            ? 'Xem quyền lợi'
-                            : 'Nâng cấp',
-                        description: profile.plan == SubscriptionPlan.max
-                            ? 'Bạn đang dùng gói toàn diện, theo dõi meal plan và workout plan không giới hạn.'
-                            : 'Mở khóa meal plan, workout plan và AI Coach nâng cao từ 66k/tháng',
+                      const _DashboardUpgradeBanner(
+                        actionLabel: 'Nạp token',
+                        description:
+                            'Token dùng chung cho AI chat, food scan, meal plan, workout plan và Smart Rebalance.',
                       ),
                     ],
                   ),
@@ -1828,9 +1813,9 @@ class _LegacyDashboardScreen extends StatelessWidget {
                     Column(
                       children: [
                         GradientActionButton(
-                          label: 'Xem meal plan',
-                          onPressed: () => controller.selectTab(1),
-                          colors: const [AppPalette.emerald, Color(0xFF18C290)],
+                          label: 'Ghi bữa ăn',
+                          onPressed: () => _showFoodScanSheet(context),
+                          colors: const [AppPalette.orange, Color(0xFFFFB15F)],
                           icon: const Icon(Icons.restaurant_menu_rounded),
                           height: 72,
                         ),
@@ -1844,16 +1829,11 @@ class _LegacyDashboardScreen extends StatelessWidget {
                         ),
                         const SizedBox(height: 12),
                         GradientActionButton(
-                          label: 'Lịch sử sức khỏe',
-                          onPressed: () {
-                            Navigator.of(context).push(
-                              MaterialPageRoute<void>(
-                                builder: (_) => const HealthHistoryScreen(),
-                              ),
-                            );
-                          },
+                          label: 'Chat với AI',
+                          onPressed: () =>
+                              showCoachSheet(context, CoachType.wellness),
                           colors: const [AppPalette.violet, Color(0xFFC58FFF)],
-                          icon: const Icon(Icons.timeline_rounded),
+                          icon: const Icon(Icons.smart_toy_rounded),
                           height: 72,
                         ),
                       ],
@@ -1863,11 +1843,11 @@ class _LegacyDashboardScreen extends StatelessWidget {
                       children: [
                         Expanded(
                           child: GradientActionButton(
-                            label: 'Xem meal plan',
-                            onPressed: () => controller.selectTab(1),
+                            label: 'Ghi bữa ăn',
+                            onPressed: () => _showFoodScanSheet(context),
                             colors: const [
-                              AppPalette.emerald,
-                              Color(0xFF18C290)
+                              AppPalette.orange,
+                              Color(0xFFFFB15F)
                             ],
                             icon: const Icon(Icons.restaurant_menu_rounded),
                             height: 72,
@@ -1886,19 +1866,14 @@ class _LegacyDashboardScreen extends StatelessWidget {
                         const SizedBox(width: 12),
                         Expanded(
                           child: GradientActionButton(
-                            label: 'Lịch sử',
-                            onPressed: () {
-                              Navigator.of(context).push(
-                                MaterialPageRoute<void>(
-                                  builder: (_) => const HealthHistoryScreen(),
-                                ),
-                              );
-                            },
+                            label: 'Chat với AI',
+                            onPressed: () =>
+                                showCoachSheet(context, CoachType.wellness),
                             colors: const [
                               AppPalette.violet,
                               Color(0xFFC58FFF)
                             ],
-                            icon: const Icon(Icons.timeline_rounded),
+                            icon: const Icon(Icons.smart_toy_rounded),
                             height: 72,
                           ),
                         ),
@@ -2004,9 +1979,9 @@ class _DashboardUpgradeBanner extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  actionLabel == 'Nâng cấp'
-                      ? 'Nâng cấp lên Premium'
-                      : 'Quyền lợi gói hiện tại',
+                  actionLabel == 'Nạp token'
+                      ? 'Ví token CoreHealth'
+                      : 'Quyền lợi hiện tại',
                   style: Theme.of(context).textTheme.titleSmall?.copyWith(
                         color: Colors.white,
                         fontWeight: FontWeight.w800,
@@ -2031,8 +2006,8 @@ class _DashboardUpgradeBanner extends StatelessWidget {
               borderRadius: BorderRadius.circular(12),
             ),
             child: Icon(
-              actionLabel == 'Nâng cấp'
-                  ? Icons.bolt_rounded
+              actionLabel == 'Nạp token'
+                  ? Icons.toll_rounded
                   : Icons.arrow_outward_rounded,
               color: Colors.white,
               size: 18,
@@ -2583,7 +2558,7 @@ class _FeatureLockedView extends StatelessWidget {
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          'Yêu cầu gói $requiredPlan',
+                          'Cần $requiredPlan',
                           style:
                               Theme.of(context).textTheme.bodyMedium?.copyWith(
                                     color: AppPalette.mutedText,
@@ -2595,7 +2570,7 @@ class _FeatureLockedView extends StatelessWidget {
                   ),
                   const SizedBox(height: 16),
                   Text(
-                    'Quyền lợi bao gồm:',
+                    'AI action dùng token cho:',
                     style: Theme.of(context).textTheme.titleSmall?.copyWith(
                           fontWeight: FontWeight.w800,
                         ),
@@ -2627,8 +2602,8 @@ class _FeatureLockedView extends StatelessWidget {
                   ),
                   const SizedBox(height: 16),
                   GradientActionButton(
-                    label: 'Nâng cấp để mở khóa',
-                    icon: const Icon(Icons.workspace_premium_rounded, size: 18),
+                    label: 'Nạp token',
+                    icon: const Icon(Icons.toll_rounded, size: 18),
                     onPressed: () => _showUpgradeSheet(context),
                     colors: colors,
                   ),
@@ -2683,7 +2658,7 @@ class _MealPlanScreenState extends State<MealPlanScreen>
         title: 'Meal Plan',
         description:
             'Kế hoạch bữa ăn cá nhân hóa theo mục tiêu và khẩu vị Việt Nam của bạn.',
-        requiredPlan: 'CoreHealth Meal hoặc Max',
+        requiredPlan: '${TokenCosts.fullDayMealPlan} token',
         benefits: [
           'Thực đơn chi tiết từng bữa mỗi ngày',
           'Tính calo & macro tự động',
@@ -2701,7 +2676,7 @@ class _MealPlanScreenState extends State<MealPlanScreen>
     final topInset = MediaQuery.of(context).padding.top;
     final layout = PhoneLayout.of(context);
     final plan = controller.mealPlan;
-    final totalMonths = controller.profile.subscriptionMonths;
+    const totalMonths = 1;
     final monthStart = currentMonth * 30;
     final daysInMonth = math.min(30, plan.length - monthStart);
     final globalIndex = (monthStart + selectedDay).clamp(0, plan.length - 1);
@@ -2753,7 +2728,7 @@ class _MealPlanScreenState extends State<MealPlanScreen>
                       ),
                       const SizedBox(height: 6),
                       Text(
-                        '${controller.profile.plan.title} • ${controller.profile.subscriptionMonths} tháng',
+                        '${controller.profile.tokenBalance} token • tạo lại tốn ${TokenCosts.fullDayMealPlan} token',
                         style: Theme.of(context).textTheme.bodyMedium,
                       ),
                     ],
@@ -2784,6 +2759,25 @@ class _MealPlanScreenState extends State<MealPlanScreen>
                     colors: const [AppPalette.orange, Color(0xFFFFA755)],
                     icon: const Icon(Icons.auto_awesome_rounded),
                   ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: () => _showFoodScanSheet(context),
+                  icon: const Icon(Icons.add_rounded, size: 18),
+                  label: const Text('Thêm thủ công'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: controller.isMealPlanGenerating
+                      ? null
+                      : () => controller.generateAiMealPlan(),
+                  icon: const Icon(Icons.auto_awesome_rounded, size: 18),
+                  label: const Text('Tạo thực đơn AI'),
                 ),
               ],
             ),
@@ -3450,7 +3444,7 @@ class _WorkoutPlanScreenState extends State<WorkoutPlanScreen>
         title: 'Workout Plan',
         description:
             'Lịch tập luyện cá nhân hóa theo thể lực và mục tiêu của bạn.',
-        requiredPlan: 'CoreHealth Workout hoặc Max',
+        requiredPlan: '${TokenCosts.adaptiveWeeklyPlan} token',
         benefits: [
           'Kế hoạch tập chi tiết từng ngày',
           'Bài tập phù hợp mọi cấp độ',
@@ -3468,7 +3462,7 @@ class _WorkoutPlanScreenState extends State<WorkoutPlanScreen>
     final topInset = MediaQuery.of(context).padding.top;
     final layout = PhoneLayout.of(context);
     final plan = controller.workoutPlan;
-    final totalMonths = controller.profile.subscriptionMonths;
+    const totalMonths = 1;
     final monthStart = currentMonth * 30;
     final daysInMonth = math.min(30, plan.length - monthStart);
     final globalIndex = (monthStart + selectedDay).clamp(0, plan.length - 1);
@@ -3520,7 +3514,7 @@ class _WorkoutPlanScreenState extends State<WorkoutPlanScreen>
                       ),
                       const SizedBox(height: 6),
                       Text(
-                        '${controller.profile.plan.title} • ${controller.profile.subscriptionMonths} tháng',
+                        '${controller.profile.tokenBalance} token • tạo lại tốn ${TokenCosts.adaptiveWeeklyPlan} token',
                         style: Theme.of(context).textTheme.bodyMedium,
                       ),
                     ],
@@ -3550,6 +3544,30 @@ class _WorkoutPlanScreenState extends State<WorkoutPlanScreen>
                     colors: const [AppPalette.blue, Color(0xFF67A1FF)],
                     icon: const Icon(Icons.auto_awesome_rounded),
                   ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Lịch tập tối ưu từ AI cho hôm nay của bạn, kèm bài tập, thời lượng và calo ước tính.',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: controller.isWorkoutPlanGenerating
+                      ? null
+                      : () => controller.generateAiWorkoutPlan(),
+                  icon: const Icon(Icons.auto_awesome_rounded, size: 18),
+                  label: const Text('Tạo lịch tập AI'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: () => showCoachSheet(context, CoachType.workout),
+                  icon: const Icon(Icons.chat_bubble_outline_rounded, size: 18),
+                  label: const Text('AI điều chỉnh'),
                 ),
               ],
             ),
@@ -5532,10 +5550,6 @@ class ProfileScreen extends StatelessWidget {
     final topInset = MediaQuery.of(context).padding.top;
     final layout = PhoneLayout.of(context);
     final horizontalPadding = layout.horizontalPadding;
-    final expiresAt = profile.subscriptionExpiresAt;
-    final expiryLabel = expiresAt != null ? _formatDate(expiresAt) : '—';
-    final daysLeft = profile.daysUntilExpiry;
-    final planDurationLabel = _subscriptionDurationLabel(profile);
     final bottomPad =
         layout.navBarHeight + MediaQuery.of(context).padding.bottom + 16;
 
@@ -5722,13 +5736,13 @@ class ProfileScreen extends StatelessWidget {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text('Gói hiện tại',
+                                    Text('Ví token',
                                         style: Theme.of(context)
                                             .textTheme
                                             .bodyMedium),
                                     const SizedBox(height: 4),
                                     Text(
-                                      profile.plan.title,
+                                      '${profile.tokenBalance} token',
                                       style: Theme.of(context)
                                           .textTheme
                                           .titleLarge
@@ -5742,23 +5756,19 @@ class ProfileScreen extends StatelessWidget {
                           ),
                           const SizedBox(height: 18),
                           Text(
-                            profile.plan.subtitle,
+                            'Một ví dùng chung cho toàn bộ AI usage.',
                             style: Theme.of(context).textTheme.bodyLarge,
                           ),
                           const SizedBox(height: 18),
                           _InfoRow(
-                            label: 'Gói',
-                            value: planDurationLabel,
+                            label: 'Đã nhận',
+                            value: '${profile.tokenEarned} token',
                           ),
                           const SizedBox(height: 10),
-                          _InfoRow(label: 'Hiệu lực đến', value: expiryLabel),
-                          if (daysLeft != null && daysLeft <= 7) ...[
-                            const SizedBox(height: 14),
-                            _SubscriptionExpiryBanner(
-                              daysLeft: daysLeft,
-                              onRenew: () => _showUpgradeSheet(context),
-                            ),
-                          ],
+                          _InfoRow(
+                            label: 'Đã dùng',
+                            value: '${profile.tokenSpent} token',
+                          ),
                         ],
                       ),
                     ),
@@ -5801,8 +5811,8 @@ class ProfileScreen extends StatelessWidget {
                               ),
                               const SizedBox(height: 12),
                               _ActionTile(
-                                title: 'Nâng cấp gói',
-                                icon: Icons.workspace_premium_outlined,
+                                title: 'Nạp token',
+                                icon: Icons.toll_rounded,
                                 color: AppPalette.orange,
                                 highlighted: true,
                                 onTap: () => _showUpgradeSheet(context),
@@ -5857,8 +5867,8 @@ class ProfileScreen extends StatelessWidget {
                                   const SizedBox(width: 12),
                                   Expanded(
                                     child: _ActionTile(
-                                      title: 'Nâng cấp gói',
-                                      icon: Icons.workspace_premium_outlined,
+                                      title: 'Nạp token',
+                                      icon: Icons.toll_rounded,
                                       color: AppPalette.orange,
                                       highlighted: true,
                                       onTap: () => _showUpgradeSheet(context),
@@ -6160,50 +6170,25 @@ class ProfileScreen extends StatelessWidget {
 
 Future<void> _showUpgradeSheet(BuildContext context) async {
   final controller = CoreHealthScope.of(context);
-  final currentPlanId = switch (controller.profile.plan) {
-    SubscriptionPlan.free => 'free',
-    SubscriptionPlan.meal => 'meal',
-    SubscriptionPlan.workout => 'workout',
-    SubscriptionPlan.max => 'max',
-  };
-  final initialPlanId = _upgradePlans.any((plan) => plan.id == currentPlanId)
-      ? currentPlanId
-      : _upgradePlans.first.id;
 
   await showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
     builder: (context) {
-      var selectedPlanId = initialPlanId;
-      var selectedMonths = controller.profile.subscriptionMonths;
+      var selectedPack = tokenPacks.firstWhere(
+        (pack) => pack.recommended,
+        orElse: () => tokenPacks.first,
+      );
 
       return StatefulBuilder(
         builder: (context, setModalState) {
-          final selectedPlan = _upgradePlans.firstWhere(
-            (plan) => plan.id == selectedPlanId,
-            orElse: () => _upgradePlans.last,
-          );
-          final durations = selectedPlan.durations;
-          if (durations.isNotEmpty &&
-              durations
-                  .every((duration) => duration.months != selectedMonths)) {
-            selectedMonths = durations.first.months;
-          }
-          final selectedDuration = durations.isEmpty
-              ? null
-              : durations.firstWhere(
-                  (duration) => duration.months == selectedMonths,
-                  orElse: () => durations.first,
-                );
-
           final safeTop = MediaQuery.of(context).padding.top;
           final safeBottom = MediaQuery.of(context).padding.bottom;
-          // Max height leaves at least safeTop + 8pt gap from top edge
           final maxH =
               MediaQuery.of(context).size.height - safeTop - 8 - safeBottom;
           return SafeArea(
-            top: false, // sheet slides up from bottom; top handled by maxH
+            top: false,
             child: Padding(
               padding: EdgeInsets.fromLTRB(10, 0, 10, safeBottom > 0 ? 0 : 10),
               child: SizedBox(
@@ -6220,7 +6205,7 @@ Future<void> _showUpgradeSheet(BuildContext context) async {
                           children: [
                             Expanded(
                               child: Text(
-                                'Chọn gói phù hợp',
+                                'Nạp token',
                                 style: Theme.of(context)
                                     .textTheme
                                     .headlineSmall
@@ -6259,16 +6244,16 @@ Future<void> _showUpgradeSheet(BuildContext context) async {
                                         color: Colors.white,
                                         borderRadius: BorderRadius.circular(14),
                                       ),
-                                      child: Icon(
-                                        Icons.workspace_premium_rounded,
-                                        color: selectedPlan.accentColor,
+                                      child: const Icon(
+                                        Icons.toll_rounded,
+                                        color: AppPalette.emerald,
                                         size: 18,
                                       ),
                                     ),
                                     const SizedBox(width: 12),
                                     Expanded(
                                       child: Text(
-                                        'Đang dùng ${controller.profile.plan.title} • ${_subscriptionDurationLabel(controller.profile)}',
+                                        'Ví hiện có ${controller.profile.tokenBalance} token. Token dùng chung cho AI chat, scan, meal plan và workout plan.',
                                         style: Theme.of(context)
                                             .textTheme
                                             .bodyMedium
@@ -6282,66 +6267,23 @@ Future<void> _showUpgradeSheet(BuildContext context) async {
                                 ),
                               ),
                               const SizedBox(height: 16),
-                              ..._upgradePlans.asMap().entries.map((entry) {
-                                final plan = entry.value;
+                              ...tokenPacks.asMap().entries.map((entry) {
+                                final pack = entry.value;
                                 return Padding(
                                   padding: EdgeInsets.only(
-                                    bottom:
-                                        entry.key == _upgradePlans.length - 1
-                                            ? 0
-                                            : 14,
+                                    bottom: entry.key == tokenPacks.length - 1
+                                        ? 0
+                                        : 14,
                                   ),
-                                  child: _UpgradePlanCard(
-                                    plan: plan,
-                                    selected: selectedPlanId == plan.id,
-                                    current: currentPlanId == plan.id,
+                                  child: _TokenPackCard(
+                                    pack: pack,
+                                    selected: selectedPack.id == pack.id,
                                     onTap: () => setModalState(() {
-                                      selectedPlanId = plan.id;
-                                      if (plan.durations.isNotEmpty) {
-                                        selectedMonths =
-                                            plan.durations.first.months;
-                                      }
+                                      selectedPack = pack;
                                     }),
                                   ),
                                 );
                               }),
-                              if (durations.isNotEmpty) ...[
-                                const SizedBox(height: 18),
-                                Text(
-                                  'Chọn thời hạn:',
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .titleSmall
-                                      ?.copyWith(fontWeight: FontWeight.w800),
-                                ),
-                                const SizedBox(height: 12),
-                                LayoutBuilder(
-                                  builder: (context, constraints) {
-                                    final itemWidth =
-                                        (constraints.maxWidth - 24) / 3;
-                                    return Wrap(
-                                      spacing: 12,
-                                      runSpacing: 12,
-                                      children: durations.map((duration) {
-                                        return SizedBox(
-                                          width: itemWidth,
-                                          child: _UpgradeDurationCard(
-                                            duration: duration,
-                                            accentColor:
-                                                selectedPlan.accentColor,
-                                            selected: selectedMonths ==
-                                                duration.months,
-                                            onTap: () => setModalState(
-                                              () => selectedMonths =
-                                                  duration.months,
-                                            ),
-                                          ),
-                                        );
-                                      }).toList(),
-                                    );
-                                  },
-                                ),
-                              ],
                             ],
                           ),
                         ),
@@ -6349,55 +6291,46 @@ Future<void> _showUpgradeSheet(BuildContext context) async {
                       Padding(
                         padding: const EdgeInsets.fromLTRB(20, 6, 20, 20),
                         child: GradientActionButton(
-                          label: selectedDuration == null
-                              ? 'Đang dùng gói miễn phí'
-                              : '${selectedPlan.id == currentPlanId ? 'Tiếp tục nâng cấp' : 'Nâng cấp ngay'} - ${selectedDuration.totalPrice}k VNĐ',
+                          label:
+                              'Nạp ${selectedPack.tokens} token - ${selectedPack.priceK}k VNĐ',
                           icon: const Icon(
-                            Icons.workspace_premium_rounded,
+                            Icons.toll_rounded,
                             size: 18,
                           ),
-                          onPressed: selectedDuration == null
-                              ? () => Navigator.of(context).pop()
-                              : () {
-                                  final plan = selectedPlan.plan;
-                                  final months = selectedDuration.months;
-                                  final title = selectedPlan.title;
-                                  final amountK = selectedDuration.totalPrice;
-                                  Navigator.of(context).push(
-                                    MaterialPageRoute<void>(
-                                      builder: (_) => PaymentScreen(
-                                        amountK: amountK,
-                                        description: '$title • $months tháng',
-                                        onSuccess: () {
-                                          controller.updateSubscription(
-                                            plan,
-                                            months: months,
-                                          );
-                                          Navigator.of(context)
-                                            ..pop()
-                                            ..pop();
-                                          ScaffoldMessenger.of(context)
-                                              .showSnackBar(
-                                            SnackBar(
-                                              content: Text(
-                                                  'Đã cập nhật $title • $months tháng'),
-                                            ),
-                                          );
-                                        },
-                                        onTimeout: () {
-                                          ScaffoldMessenger.of(context)
-                                              .showSnackBar(
-                                            const SnackBar(
-                                              content: Text(
-                                                  'Đã huỷ — không nhận được thanh toán.'),
-                                              backgroundColor: Colors.orange,
-                                            ),
-                                          );
-                                        },
+                          onPressed: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute<void>(
+                                builder: (_) => PaymentScreen(
+                                  amountK: selectedPack.priceK,
+                                  description:
+                                      '${selectedPack.title} token pack - ${selectedPack.tokens} token',
+                                  onSuccess: () {
+                                    controller.activateTokenPack(selectedPack);
+                                    Navigator.of(context)
+                                      ..pop()
+                                      ..pop();
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(
+                                          'Đã nạp ${selectedPack.tokens} token.',
+                                        ),
                                       ),
-                                    ),
-                                  );
-                                },
+                                    );
+                                  },
+                                  onTimeout: () {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text(
+                                          'Đã huỷ — không nhận được thanh toán.',
+                                        ),
+                                        backgroundColor: Colors.orange,
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ),
+                            );
+                          },
                           colors: const [
                             AppPalette.emerald,
                             Color(0xFF18C290),
@@ -6414,6 +6347,148 @@ Future<void> _showUpgradeSheet(BuildContext context) async {
       );
     },
   );
+}
+
+class _TokenPackCard extends StatelessWidget {
+  const _TokenPackCard({
+    required this.pack,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final TokenPack pack;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = pack.recommended ? AppPalette.emerald : AppPalette.blue;
+    final titleColor = selected ? Colors.white : AppPalette.text;
+    final bodyColor =
+        selected ? Colors.white.withValues(alpha: 0.86) : AppPalette.mutedText;
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(26),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 220),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          gradient: selected
+              ? LinearGradient(colors: [accent, AppPalette.emeraldDeep])
+              : null,
+          color: selected ? null : AppPalette.surface,
+          borderRadius: BorderRadius.circular(26),
+          border: Border.all(
+            color: selected ? Colors.transparent : AppPalette.border,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color:
+                  selected ? accent.withValues(alpha: 0.22) : AppPalette.shadow,
+              blurRadius: selected ? 24 : 18,
+              offset: const Offset(0, 10),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: selected
+                    ? Colors.white.withValues(alpha: 0.16)
+                    : accent.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Icon(
+                Icons.toll_rounded,
+                color: selected ? Colors.white : accent,
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          pack.title,
+                          style:
+                              Theme.of(context).textTheme.titleMedium?.copyWith(
+                                    color: titleColor,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                        ),
+                      ),
+                      if (pack.recommended)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: selected
+                                ? Colors.white.withValues(alpha: 0.18)
+                                : AppPalette.emeraldSoft,
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: Text(
+                            'Phổ biến',
+                            style: Theme.of(context)
+                                .textTheme
+                                .labelSmall
+                                ?.copyWith(
+                                  color: selected
+                                      ? Colors.white
+                                      : AppPalette.emeraldDeep,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 5),
+                  Text(
+                    pack.description,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: bodyColor,
+                          fontWeight: FontWeight.w700,
+                        ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  '${pack.tokens}',
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        color: titleColor,
+                        fontWeight: FontWeight.w900,
+                      ),
+                ),
+                Text(
+                  '${pack.priceK}k',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: bodyColor,
+                        fontWeight: FontWeight.w800,
+                      ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _HeaderStat extends StatelessWidget {
@@ -6602,6 +6677,8 @@ class _SurveyInfoChips extends StatelessWidget {
   }
 }
 
+// Legacy subscription widgets stay here while older screens are migrated.
+// ignore: unused_element
 class _SubscriptionExpiryBanner extends StatelessWidget {
   const _SubscriptionExpiryBanner({
     required this.daysLeft,
@@ -6671,12 +6748,14 @@ class _SubscriptionExpiryBanner extends StatelessWidget {
   }
 }
 
+// ignore: unused_element
 String _formatDate(DateTime date) {
   final day = date.day.toString().padLeft(2, '0');
   final month = date.month.toString().padLeft(2, '0');
   return '$day/$month/${date.year}';
 }
 
+// ignore: unused_element
 String _subscriptionDurationLabel(DemoProfile profile) {
   if (profile.hasActiveCoreHealthMaxTrial &&
       profile.plan == SubscriptionPlan.max) {
@@ -6761,6 +6840,7 @@ class _UpgradeDuration {
   final String? savingsLabel;
 }
 
+// ignore: unused_element
 const _upgradePlans = <_UpgradePlanData>[
   _UpgradePlanData(
     id: 'meal',
@@ -6848,6 +6928,7 @@ const _upgradePlans = <_UpgradePlanData>[
   ),
 ];
 
+// ignore: unused_element
 class _UpgradePlanCard extends StatelessWidget {
   const _UpgradePlanCard({
     required this.plan,
@@ -7039,6 +7120,7 @@ class _UpgradePlanCard extends StatelessWidget {
   }
 }
 
+// ignore: unused_element
 class _UpgradeDurationCard extends StatelessWidget {
   const _UpgradeDurationCard({
     required this.duration,

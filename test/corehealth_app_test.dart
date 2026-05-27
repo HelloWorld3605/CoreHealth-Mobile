@@ -46,13 +46,26 @@ class _MemoryRepository implements AppRepository {
   Future<AppBootstrapData> bootstrap() async => const AppBootstrapData();
 
   @override
-  Future<AuthResult> register({
+  Future<RegisterResponseData> register({
     required String displayName,
     required String email,
     required String password,
+    String? referralCode,
+  }) async {
+    return RegisterResponseData(
+      success: true,
+      email: email,
+      devOtp: '123456',
+    );
+  }
+
+  @override
+  Future<AuthResult> verifyOtp({
+    required String email,
+    required String otp,
   }) async {
     _userData = PersistedUserData(
-      profile: DemoData.initialProfile.copyWith(name: displayName),
+      profile: DemoData.initialProfile.copyWith(name: 'Demo User'),
       weightHistory: DemoData.weightEntries,
       completedWorkoutDays: const {},
       completedMealDays: const {},
@@ -68,6 +81,18 @@ class _MemoryRepository implements AppRepository {
       userData: _userData,
     );
   }
+
+  @override
+  Future<RegisterResponseData> resendOtp({
+    required String email,
+  }) async {
+    return RegisterResponseData(
+      success: true,
+      email: email,
+      devOtp: '123456',
+    );
+  }
+
 
   @override
   Future<AuthResult> signIn({
@@ -122,6 +147,28 @@ class _MemoryRepository implements AppRepository {
       profile: _userData.profile.copyWith(
         plan: plan,
         subscriptionMonths: months,
+      ),
+      weightHistory: _userData.weightHistory,
+      completedWorkoutDays: _userData.completedWorkoutDays,
+      completedMealDays: _userData.completedMealDays,
+      cart: _userData.cart,
+      orders: _userData.orders,
+    );
+    return _userData;
+  }
+
+  @override
+  Future<PersistedUserData> updateTokenWallet({
+    required String userId,
+    required int tokenBalance,
+    required int tokenEarned,
+    required int tokenSpent,
+  }) async {
+    _userData = PersistedUserData(
+      profile: _userData.profile.copyWith(
+        tokenBalance: tokenBalance,
+        tokenEarned: tokenEarned,
+        tokenSpent: tokenSpent,
       ),
       weightHistory: _userData.weightHistory,
       completedWorkoutDays: _userData.completedWorkoutDays,

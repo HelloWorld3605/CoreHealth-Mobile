@@ -18,6 +18,7 @@ class _AuthScreenState extends State<AuthScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
+  final _referralCodeController = TextEditingController();
   bool _isSubmitting = false;
 
   @override
@@ -26,6 +27,7 @@ class _AuthScreenState extends State<AuthScreen> {
     _emailController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
+    _referralCodeController.dispose();
     super.dispose();
   }
 
@@ -49,6 +51,7 @@ class _AuthScreenState extends State<AuthScreen> {
     final mode = controller.authMode;
     final email = _emailController.text.trim();
     final password = _passwordController.text;
+    final referralCode = _referralCodeController.text.trim();
     String? message;
 
     if (email.isEmpty || password.isEmpty) {
@@ -73,6 +76,7 @@ class _AuthScreenState extends State<AuthScreen> {
             displayName: _displayNameController.text.trim(),
             email: email,
             password: password,
+            referralCode: referralCode.isEmpty ? null : referralCode,
           );
     if (!mounted) {
       return;
@@ -198,9 +202,18 @@ class _AuthScreenState extends State<AuthScreen> {
                           TextField(
                             controller: _confirmPasswordController,
                             obscureText: true,
-                            textInputAction: TextInputAction.done,
+                            textInputAction: TextInputAction.next,
                             decoration: const InputDecoration(
                               labelText: 'Xác nhận mật khẩu',
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          TextField(
+                            controller: _referralCodeController,
+                            textInputAction: TextInputAction.done,
+                            decoration: const InputDecoration(
+                              labelText: 'Mã giới thiệu (nếu có)',
+                              hintText: 'Ví dụ: TUNG-123456',
                             ),
                           ),
                         ],

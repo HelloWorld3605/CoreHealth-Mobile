@@ -1255,3 +1255,52 @@ CoreHealth nên đi theo hướng:
 Product strategy ngắn gọn:
 
 > CoreHealth không chỉ tạo kế hoạch sức khỏe. CoreHealth theo dõi, hiểu và tự điều chỉnh kế hoạch đó cùng bạn mỗi ngày.
+
+## 21. Đánh Giá Hiện Trạng: Web vs. Mobile & Kế Hoạch Đồng Bộ Hóa (Cập nhật 27/05/2026)
+
+Để đưa CoreHealth tiệm cận 100% độ tương đồng trải nghiệm người dùng, dưới đây là phân tích chi tiết sự lệch pha (mismatch) giữa bản Web (`CoreHealth-FE`) và bản Native Mobile (`CoreHealth-Mobile`), kèm theo định hướng xử lý đồng bộ hóa.
+
+### 21.1. So Sánh Bố Cục Điều Hướng (UI Navigation Layout)
+
+* **Web Mobile (`MobileBottomNav.tsx`)**: Bố cục **5 nút** chuẩn.
+  * Các tab chính: *Home (Dashboard), Meals (Bữa ăn), Workout (Tập luyện), More (Xem thêm)*.
+  * **Nút trung tâm (Center FAB)**: Dành cho **AI Coach** (đặt ở giữa thanh điều hướng).
+  * Sheet "More" chứa 9 liên kết sâu (Bài tập, Công thức, Lịch, Thói quen, Shop, Đơn hàng, Yêu thích, Giới thiệu, Cài đặt).
+* **Native Mobile (`home_shell.dart`)**: Bố cục **6 nút** kết hợp.
+  * Nửa trái: *Trang (Home), Ăn (Meals), Tập (Workouts)*.
+  * Nửa phải: *Shop, Tôi (Profile), More*.
+  * **Nút đè ở giữa (Center Overlay)**: Dành cho **Quét (Camera/Food Scan)**.
+  * AI Coach được bố trí làm Floating Action Button (FAB) đè trên nội dung ở góc dưới bên phải.
+  * Sheet "More" trên mobile chỉ có 3 nút nhanh: *AI Coach, Quét bữa ăn, Lịch sử sức khỏe*.
+
+**Định hướng Đồng bộ hóa Điều hướng**:
+1. Tiến hành thu gọn Bottom Nav của Mobile về **5 nút** giống Web. Chuyển `Shop` và `Tôi` (Profile) vào trong sheet "More".
+2. Chuyển đổi nút tròn nổi ở giữa thanh Bottom Nav từ **Quét (Camera)** thành **AI Coach**.
+3. Chuyển tính năng Quét món ăn (Food Scan) thành một tùy chọn chính trong sheet "More" để giải phóng không gian màn hình chính.
+
+---
+
+### 21.2. Bảng Phân Tích Tính Năng Chưa Khớp (Feature Discrepancy Matrix)
+
+Dưới đây là chi tiết các tính năng bị thiếu hoặc lệch thiết kế trên Mobile so với bản Web:
+
+| Tính Năng / Trang | Trạng thái hiện tại trên Mobile | Hành động đề xuất để Đồng bộ |
+| :--- | :--- | :--- |
+| **Thư viện bài tập (Exercises)** | ❌ Chưa có màn hình thư viện duyệt bài tập. Bài tập chỉ xuất hiện trong lịch tập được tạo sẵn. | Tạo mới màn hình `exercise_library_screen.dart` hỗ trợ tìm kiếm bài tập theo nhóm cơ và xem hướng dẫn chi tiết. |
+| **Thư viện công thức (Recipes)** | ❌ Hoàn toàn thiếu màn hình duyệt/tìm kiếm công thức món ăn healthy. | Tạo mới màn hình `recipes_screen.dart` hiển thị danh sách nguyên liệu, cách làm và thông số calo/macro. |
+| **Theo dõi thói quen (Habits)** | ❌ Chưa có tính năng kiểm tra thói quen hàng ngày (nước uống, giấc ngủ, đi bộ). | Tạo màn hình check-list thói quen `habits_screen.dart` và tích hợp lưu trữ trạng thái vào SQLite. |
+| **Mục Yêu thích (Favorites)** | ❌ Chưa có chức năng lưu trữ/đánh dấu yêu thích các bài tập hay món ăn. | Tạo màn hình `favorites_screen.dart` hiển thị các bài tập/món ăn đã lưu, tạo bảng SQLite lưu mối quan hệ này. |
+| **Thử thách & Bảng xếp hạng (Challenges & Leaderboard)** | ❌ Hoàn toàn thiếu. | Tạo màn hình mock `challenges_screen.dart` (thử thách 30 ngày) và `leaderboard_screen.dart` (xếp hạng streak). |
+| **Lịch biểu (Schedule)** | ⚠️ Chỉ có `HealthHistoryScreen` dạng timeline xem lại cân nặng/streak cũ, chưa có lịch lập kế hoạch cho tương lai. | Cải tiến lịch lịch sử thành lịch tích hợp lập kế hoạch ăn/tập cho các ngày tiếp theo trong tuần. |
+| **Quản lý đơn hàng (Orders)** | ⚠️ Đang hiển thị danh sách đơn hàng gần đây dạng rút gọn trực tiếp trong Profile. | Tách biệt thành màn hình `orders_screen.dart` để xem thông tin chi tiết hóa đơn/trạng thái giao hàng. |
+| **Cài đặt (Settings)** | ⚠️ Tích hợp các nút hành động nhỏ (đổi cân nặng, Profile Survey) trực tiếp trong trang Tôi. | Thiết lập trang `settings_screen.dart` độc lập quản lý cấu hình thông báo, đổi ngôn ngữ, điều khoản bảo mật. |
+
+---
+
+### 21.3. Lộ Trình Kỹ Thuật Cho Mobile
+
+Để thực hiện việc đồng bộ hóa này mà vẫn đảm bảo hiệu năng và tính ổn định, luồng phát triển sẽ tuân theo thứ tự:
+1. **Migration SQLite**: Nâng cấp schema SQLite lên phiên bản 12 để tạo các bảng lưu trữ mới (`habit_logs`, `favorite_items`).
+2. **Re-architect Bottom Nav**: Cập nhật `CoreHealthBottomNav` và `home_shell.dart` để chuyển đổi cấu trúc thanh điều hướng từ 6 nút thành 5 nút và cập nhật More Sheet lên 11 mục.
+3. **Build Feature Screens**: Lần lượt tạo mới và liên kết các file màn hình tương ứng vào hệ thống điều hướng (Exercises, Recipes, Habits, Favorites, Challenges, Leaderboard, Orders, Settings).
+4. **State Syncing**: Kết nối các nút bấm trên màn hình mới với `AppController` để đọc/ghi trực tiếp từ SQLite cục bộ, đảm bảo hoạt động offline thông minh.

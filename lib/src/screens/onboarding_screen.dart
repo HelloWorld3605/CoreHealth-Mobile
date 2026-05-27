@@ -1,4 +1,4 @@
-// ignore_for_file: prefer_const_constructors, prefer_const_literals_to_create_immutables
+// ignore_for_file: prefer_const_constructors, prefer_const_literals_to_create_immutables, unused_element, unused_field
 
 import 'package:flutter/material.dart';
 import 'package:flutter/physics.dart';
@@ -823,7 +823,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
                     color: AppPalette.surfaceElevated,
                     borderRadius: BorderRadius.circular(12),
@@ -1083,8 +1084,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   }
 
   Future<void> _showTargetWeightInputSheet() async {
-    final displayWeight =
-        weightUnit == _WeightUnit.kg ? _resolvedTargetWeightKg : _resolvedTargetWeightKg * 2.20462;
+    final displayWeight = weightUnit == _WeightUnit.kg
+        ? _resolvedTargetWeightKg
+        : _resolvedTargetWeightKg * 2.20462;
     var weightText = _formatDecimal(displayWeight);
 
     void submit(BuildContext sheetContext) {
@@ -1098,8 +1100,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       final nextKg = weightUnit == _WeightUnit.kg ? typed : typed / 2.20462;
       final range = _targetWeightRange;
       if (nextKg < range.$1 || nextKg > range.$2) {
-        final minDisplay = weightUnit == _WeightUnit.kg ? range.$1 : range.$1 * 2.20462;
-        final maxDisplay = weightUnit == _WeightUnit.kg ? range.$2 : range.$2 * 2.20462;
+        final minDisplay =
+            weightUnit == _WeightUnit.kg ? range.$1 : range.$1 * 2.20462;
+        final maxDisplay =
+            weightUnit == _WeightUnit.kg ? range.$2 : range.$2 * 2.20462;
         ScaffoldMessenger.maybeOf(sheetContext)?.showSnackBar(
           SnackBar(
             content: Text(
@@ -1639,7 +1643,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     );
   }
 
-  // ignore: unused_element
   Widget _paywallStep(BuildContext context) {
     return Column(
       children: [
@@ -1694,7 +1697,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'CoreHealth Max',
+                              'Token Wallet',
                               style: Theme.of(context)
                                   .textTheme
                                   .titleLarge
@@ -1705,7 +1708,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              'Dùng thử miễn phí Max trong 7 ngày',
+                              'Nhận 25 token miễn phí để thử AI',
                               style: Theme.of(context)
                                   .textTheme
                                   .titleSmall
@@ -1722,29 +1725,29 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 ),
                 const SizedBox(height: 18),
                 _PlanOption(
-                  title: 'CoreHealth Meal',
-                  price: '99k/tháng',
-                  weekly: 'Meal plan cá nhân hóa',
+                  title: 'Starter',
+                  price: '49k',
+                  weekly: '55 token để thử AI plan và scan',
                   selected: selectedPlan == SubscriptionPlan.meal,
                   onTap: () =>
                       setState(() => selectedPlan = SubscriptionPlan.meal),
                 ),
                 const SizedBox(height: 14),
                 _PlanOption(
-                  title: 'CoreHealth Workout',
-                  price: '89k/tháng',
-                  weekly: 'Workout plan có AI',
+                  title: 'Basic',
+                  price: '99k',
+                  weekly: '120 token phổ biến nhất',
                   selected: selectedPlan == SubscriptionPlan.workout,
                   onTap: () =>
                       setState(() => selectedPlan = SubscriptionPlan.workout),
                 ),
                 const SizedBox(height: 14),
                 _PlanOption(
-                  title: 'CoreHealth Max',
-                  price: '159k/tháng',
-                  weekly: 'Meal + Workout + AI Coach',
+                  title: 'Plus',
+                  price: '149k',
+                  weekly: '190 token cho plan và chat nhiều hơn',
                   selected: selectedPlan == SubscriptionPlan.max,
-                  badge: '7 ngày miễn phí',
+                  badge: 'Đề xuất',
                   onTap: () =>
                       setState(() => selectedPlan = SubscriptionPlan.max),
                 ),
@@ -1770,7 +1773,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                       const SizedBox(width: 10),
                       Expanded(
                         child: Text(
-                          'Max được dùng thử miễn phí trong 7 ngày.',
+                          'Tracking cơ bản miễn phí. AI action sẽ dùng token chung trong ví.',
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style:
@@ -2429,10 +2432,11 @@ class _TargetWeightCard extends StatelessWidget {
                     children: [
                       Text(
                         '${_formatDecimal(targetDisplay)} $unitStr',
-                        style: Theme.of(context).textTheme.displaySmall?.copyWith(
-                              color: AppPalette.text,
-                              fontWeight: FontWeight.w900,
-                            ),
+                        style:
+                            Theme.of(context).textTheme.displaySmall?.copyWith(
+                                  color: AppPalette.text,
+                                  fontWeight: FontWeight.w900,
+                                ),
                       ),
                       const SizedBox(height: 4),
                       Text(
@@ -2445,7 +2449,8 @@ class _TargetWeightCard extends StatelessWidget {
                       if (onValueTap != null) ...[
                         const SizedBox(height: 6),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 3),
                           decoration: BoxDecoration(
                             color: AppPalette.surfaceElevated,
                             borderRadius: BorderRadius.circular(10),
@@ -2462,7 +2467,10 @@ class _TargetWeightCard extends StatelessWidget {
                               const SizedBox(width: 4),
                               Text(
                                 'Tự nhập',
-                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .bodySmall
+                                    ?.copyWith(
                                       color: AppPalette.mutedText,
                                       fontWeight: FontWeight.w600,
                                       fontSize: 10,
@@ -3303,7 +3311,8 @@ class _VerticalMeasurePickerState extends State<_VerticalMeasurePicker>
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 4),
                       decoration: BoxDecoration(
                         color: AppPalette.surfaceElevated,
                         borderRadius: BorderRadius.circular(12),
@@ -3320,10 +3329,11 @@ class _VerticalMeasurePickerState extends State<_VerticalMeasurePicker>
                           const SizedBox(width: 4),
                           Text(
                             'Chạm để tự nhập',
-                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                  color: AppPalette.mutedText,
-                                  fontWeight: FontWeight.w600,
-                                ),
+                            style:
+                                Theme.of(context).textTheme.bodySmall?.copyWith(
+                                      color: AppPalette.mutedText,
+                                      fontWeight: FontWeight.w600,
+                                    ),
                           ),
                         ],
                       ),
@@ -3336,7 +3346,10 @@ class _VerticalMeasurePickerState extends State<_VerticalMeasurePicker>
                       children: [
                         Text(
                           widget.display,
-                          style: Theme.of(context).textTheme.displayLarge?.copyWith(
+                          style: Theme.of(context)
+                              .textTheme
+                              .displayLarge
+                              ?.copyWith(
                                 fontSize: 56,
                                 fontWeight: FontWeight.w900,
                               ),
@@ -3344,11 +3357,13 @@ class _VerticalMeasurePickerState extends State<_VerticalMeasurePicker>
                         const SizedBox(width: 8),
                         Text(
                           widget.unit,
-                          style:
-                              Theme.of(context).textTheme.headlineSmall?.copyWith(
-                                    color: AppPalette.mutedText,
-                                    fontWeight: FontWeight.w600,
-                                  ),
+                          style: Theme.of(context)
+                              .textTheme
+                              .headlineSmall
+                              ?.copyWith(
+                                color: AppPalette.mutedText,
+                                fontWeight: FontWeight.w600,
+                              ),
                         ),
                       ],
                     ),

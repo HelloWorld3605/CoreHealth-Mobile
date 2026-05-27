@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:math';
 
 import 'package:crypto/crypto.dart';
@@ -8,6 +9,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import '../demo_data.dart';
 import '../models.dart';
+import '../services/email_service.dart';
 
 abstract class AppRepository {
   Future<AppBootstrapData> bootstrap();
@@ -15,10 +17,18 @@ abstract class AppRepository {
     required String email,
     required String password,
   });
-  Future<AuthResult> register({
+  Future<RegisterResponseData> register({
     required String displayName,
     required String email,
     required String password,
+    String? referralCode,
+  });
+  Future<AuthResult> verifyOtp({
+    required String email,
+    required String otp,
+  });
+  Future<RegisterResponseData> resendOtp({
+    required String email,
   });
   Future<AuthResult> signInWithGoogle({required String idToken});
   Future<PersistedUserData> saveOnboardingProfile({
@@ -29,6 +39,12 @@ abstract class AppRepository {
     required String userId,
     required SubscriptionPlan plan,
     required int months,
+  });
+  Future<PersistedUserData> updateTokenWallet({
+    required String userId,
+    required int tokenBalance,
+    required int tokenEarned,
+    required int tokenSpent,
   });
   Future<PersistedUserData> updateWeight({
     required String userId,
@@ -114,12 +130,33 @@ class AppAuthException implements Exception {
   String toString() => message;
 }
 
+class _PendingRegistration {
+  const _PendingRegistration({
+    required this.displayName,
+    required this.email,
+    required this.password,
+    required this.otp,
+    required this.createdAt,
+    this.referralCode,
+  });
+
+  final String displayName;
+  final String email;
+  final String password;
+  final String otp;
+  final DateTime createdAt;
+  final String? referralCode;
+}
+
 class LocalAppRepository implements AppRepository {
-  LocalAppRepository({DatabaseFactory? databaseFactory})
+  final Map<String, _PendingRegistration> _pendingRegistrations = {};
+  LocalAppRepository({DatabaseFactory? databaseFactory, String? databasePath})
       : _databaseFactory =
-            databaseFactory ?? (kIsWeb ? null : _defaultDatabaseFactory());
+            databaseFactory ?? (kIsWeb ? null : _defaultDatabaseFactory()),
+        _databasePath = databasePath ?? 'corehealth.db';
 
   final DatabaseFactory? _databaseFactory;
+  final String _databasePath;
   final _memoryStore = _MemoryStore();
   Database? _database;
 
@@ -206,16 +243,18 @@ class LocalAppRepository implements AppRepository {
   }
 
   @override
-  Future<AuthResult> register({
+  Future<RegisterResponseData> register({
     required String displayName,
     required String email,
     required String password,
+    String? referralCode,
   }) async {
     if (kIsWeb) {
       return _memoryStore.register(
         displayName: displayName,
         email: email,
         password: password,
+        referralCode: referralCode,
       );
     }
 
@@ -237,6 +276,77 @@ class LocalAppRepository implements AppRepository {
       throw const AppAuthException('Email này đã được đăng ký.');
     }
 
+    if (referralCode != null && referralCode.trim().isNotEmpty) {
+      final refUpper = referralCode.trim().toUpperCase();
+      final refRows = await database.query(
+        _profilesTable,
+        columns: const ['user_id'],
+        where: 'UPPER(referral_code) = ?',
+        whereArgs: [refUpper],
+        limit: 1,
+      );
+      if (refRows.isEmpty) {
+        throw const AppAuthException('Mã giới thiệu không hợp lệ.');
+      }
+    }
+
+    final random = Random();
+    final otp = (100000 + random.nextInt(900000)).toString();
+
+    _pendingRegistrations[normalizedEmail] = _PendingRegistration(
+      displayName: normalizedName,
+      email: normalizedEmail,
+      password: password,
+      otp: otp,
+      createdAt: DateTime.now(),
+      referralCode: referralCode,
+    );
+
+    try {
+      if (!Platform.environment.containsKey('FLUTTER_TEST')) {
+        await EmailService().sendOtpEmail(toEmail: normalizedEmail, otp: otp);
+      } else {
+        debugPrint('Skipping sending OTP email in test environment. OTP: $otp');
+      }
+    } catch (e) {
+      debugPrint('Error sending OTP email: $e. OTP: $otp');
+      throw AppAuthException('Không thể gửi email xác thực: $e. Vui lòng kiểm tra lại mạng hoặc thông tin Gmail.');
+    }
+
+    return RegisterResponseData(
+      success: true,
+      email: normalizedEmail,
+      devOtp: otp,
+    );
+  }
+
+  @override
+  Future<AuthResult> verifyOtp({
+    required String email,
+    required String otp,
+  }) async {
+    if (kIsWeb) {
+      return _memoryStore.verifyOtp(email: email, otp: otp);
+    }
+
+    final normalizedEmail = _normalizeEmail(email);
+    final pending = _pendingRegistrations[normalizedEmail];
+    if (pending == null) {
+      throw const AppAuthException('Không tìm thấy thông tin đăng ký cho email này. Vui lòng đăng ký lại.');
+    }
+
+    if (pending.otp != otp) {
+      throw const AppAuthException('Mã xác thực không chính xác.');
+    }
+
+    if (DateTime.now().difference(pending.createdAt).inMinutes > 10) {
+      _pendingRegistrations.remove(normalizedEmail);
+      throw const AppAuthException('Mã xác thực đã hết hạn. Vui lòng đăng ký lại.');
+    }
+
+    _pendingRegistrations.remove(normalizedEmail);
+
+    final database = await _openDatabase();
     final userId = _generateUserId();
     final now = DateTime.now().toIso8601String();
     final salt = _generateSalt();
@@ -247,14 +357,81 @@ class LocalAppRepository implements AppRepository {
         {
           'id': userId,
           'email': normalizedEmail,
-          'password_hash': _hashPasswordWithSalt(password, salt),
+          'password_hash': _hashPasswordWithSalt(pending.password, salt),
           'password_salt': salt,
-          'display_name': normalizedName,
+          'display_name': pending.displayName,
           'created_at': now,
         },
       );
+
+      final myReferralCode = _generateReferralCode(pending.displayName);
+      var signupTokens = 25; // SIGNUP_BONUS_TOKENS
+      var referrerId = '';
+
+      if (pending.referralCode != null && pending.referralCode!.trim().isNotEmpty) {
+        final refUpper = pending.referralCode!.trim().toUpperCase();
+        final refRows = await txn.query(
+          _profilesTable,
+          columns: const ['user_id'],
+          where: 'UPPER(referral_code) = ?',
+          whereArgs: [refUpper],
+          limit: 1,
+        );
+        if (refRows.isEmpty) {
+          throw const AppAuthException('Mã giới thiệu không hợp lệ.');
+        }
+        final foundReferrerId = refRows.first['user_id'] as String;
+        if (foundReferrerId == userId) {
+          throw const AppAuthException('Không thể tự dùng mã giới thiệu của chính mình.');
+        }
+
+        signupTokens = 65; // 25 + 40 (REFERRED_BONUS_TOKENS)
+        referrerId = foundReferrerId;
+
+        // Reward referrer: count active referrals
+        final referralsCountRows = await txn.query(
+          _profilesTable,
+          columns: const ['user_id'],
+          where: 'referred_by = ?',
+          whereArgs: [referrerId],
+        );
+        final nextCount = referralsCountRows.length + 1;
+        if (nextCount > 0 && nextCount % 5 == 0) { // REFERRER_BATCH_SIZE = 5
+          final refProfileRows = await txn.query(
+            _profilesTable,
+            columns: const ['token_balance', 'token_earned'],
+            where: 'user_id = ?',
+            whereArgs: [referrerId],
+            limit: 1,
+          );
+          if (refProfileRows.isNotEmpty) {
+            final oldBalance = refProfileRows.first['token_balance'] as int? ?? 0;
+            final oldEarned = refProfileRows.first['token_earned'] as int? ?? 0;
+            await txn.update(
+              _profilesTable,
+              {
+                'token_balance': oldBalance + 20,
+                'token_earned': oldEarned + 20,
+                'updated_at': now,
+              },
+              where: 'user_id = ?',
+              whereArgs: [referrerId],
+            );
+          }
+        }
+      }
+
+      final profile = _defaultProfileFor(pending.displayName).copyWith(
+        tokenBalance: signupTokens,
+        tokenEarned: signupTokens,
+        referralCode: myReferralCode,
+        referredBy: referrerId,
+      );
+
       await _insertDefaultProfile(txn,
-          userId: userId, displayName: normalizedName);
+          userId: userId, displayName: pending.displayName);
+      await _upsertProfile(txn,
+          userId: userId, profile: profile, onboardingCompleted: false);
       await _persistSession(txn, userId);
     });
 
@@ -267,6 +444,56 @@ class LocalAppRepository implements AppRepository {
       userData: await _readUserData(database, userId),
     );
   }
+
+  @override
+  Future<RegisterResponseData> resendOtp({
+    required String email,
+  }) async {
+    if (kIsWeb) {
+      return _memoryStore.resendOtp(email: email);
+    }
+
+    final normalizedEmail = _normalizeEmail(email);
+    final pending = _pendingRegistrations[normalizedEmail];
+    if (pending == null) {
+      throw const AppAuthException('Không tìm thấy thông tin đăng ký cho email này. Vui lòng đăng ký lại.');
+    }
+
+    final now = DateTime.now();
+    if (now.difference(pending.createdAt).inSeconds < 60) {
+      throw const AppAuthException('Vui lòng đợi 60 giây trước khi yêu cầu gửi lại mã.');
+    }
+
+    final random = Random();
+    final newOtp = (100000 + random.nextInt(900000)).toString();
+
+    _pendingRegistrations[normalizedEmail] = _PendingRegistration(
+      displayName: pending.displayName,
+      email: pending.email,
+      password: pending.password,
+      otp: newOtp,
+      createdAt: now,
+      referralCode: pending.referralCode,
+    );
+
+    try {
+      if (!Platform.environment.containsKey('FLUTTER_TEST')) {
+        await EmailService().sendOtpEmail(toEmail: normalizedEmail, otp: newOtp);
+      } else {
+        debugPrint('Skipping sending OTP email in test environment. OTP: $newOtp');
+      }
+    } catch (e) {
+      debugPrint('Error sending OTP email: $e. OTP: $newOtp');
+      throw AppAuthException('Không thể gửi lại email xác thực: $e. Vui lòng kiểm tra lại mạng hoặc thông tin Gmail.');
+    }
+
+    return RegisterResponseData(
+      success: true,
+      email: normalizedEmail,
+      devOtp: newOtp,
+    );
+  }
+
 
   @override
   Future<AuthResult> signInWithGoogle({required String idToken}) async {
@@ -707,15 +934,17 @@ class LocalAppRepository implements AppRepository {
       throw StateError('Database factory is unavailable for this platform.');
     }
 
-    final databasePath = p.join(
-      await databaseFactory.getDatabasesPath(),
-      'corehealth.db',
-    );
+    final databasePath = _databasePath == inMemoryDatabasePath
+        ? inMemoryDatabasePath
+        : p.join(
+            await databaseFactory.getDatabasesPath(),
+            _databasePath,
+          );
 
     final database = await databaseFactory.openDatabase(
       databasePath,
       options: OpenDatabaseOptions(
-        version: 9,
+        version: 11,
         onConfigure: (db) async {
           await db.execute('PRAGMA foreign_keys = ON');
         },
@@ -818,6 +1047,64 @@ class LocalAppRepository implements AppRepository {
         debugPrint('Migration warning: $e');
       }
     }
+    if (oldVersion < 10) {
+      for (final statement in [
+        'ALTER TABLE $_profilesTable ADD COLUMN token_balance INTEGER NOT NULL DEFAULT 0',
+        'ALTER TABLE $_profilesTable ADD COLUMN token_earned INTEGER NOT NULL DEFAULT 0',
+        'ALTER TABLE $_profilesTable ADD COLUMN token_spent INTEGER NOT NULL DEFAULT 0',
+      ]) {
+        try {
+          await db.execute(statement);
+        } catch (e) {
+          debugPrint('Migration warning: $e');
+        }
+      }
+    }
+    if (oldVersion < 11) {
+      for (final statement in [
+        "ALTER TABLE $_profilesTable ADD COLUMN referral_code TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE $_profilesTable ADD COLUMN referred_by TEXT NOT NULL DEFAULT ''",
+      ]) {
+        try {
+          await db.execute(statement);
+        } catch (e) {
+          debugPrint('Migration warning: $e');
+        }
+      }
+    }
+  }
+
+  @override
+  Future<PersistedUserData> updateTokenWallet({
+    required String userId,
+    required int tokenBalance,
+    required int tokenEarned,
+    required int tokenSpent,
+  }) async {
+    if (kIsWeb) {
+      return _memoryStore.updateTokenWallet(
+        userId: userId,
+        tokenBalance: tokenBalance,
+        tokenEarned: tokenEarned,
+        tokenSpent: tokenSpent,
+      );
+    }
+
+    final database = await _openDatabase();
+    final currentProfile = await _readProfile(database, userId);
+    final updatedProfile = currentProfile.copyWith(
+      tokenBalance: tokenBalance,
+      tokenEarned: tokenEarned,
+      tokenSpent: tokenSpent,
+    );
+    await _upsertProfile(
+      database,
+      userId: userId,
+      profile: updatedProfile,
+      onboardingCompleted: true,
+    );
+
+    return _readUserData(database, userId);
   }
 
   Future<void> _createSchema(Database db) async {
@@ -866,6 +1153,11 @@ class LocalAppRepository implements AppRepository {
         core_health_max_trial_expires_at TEXT,
         plan TEXT NOT NULL,
         subscription_months INTEGER NOT NULL,
+        token_balance INTEGER NOT NULL DEFAULT 0,
+        token_earned INTEGER NOT NULL DEFAULT 0,
+        token_spent INTEGER NOT NULL DEFAULT 0,
+        referral_code TEXT NOT NULL DEFAULT '',
+        referred_by TEXT NOT NULL DEFAULT '',
         onboarding_completed INTEGER NOT NULL DEFAULT 0,
         updated_at TEXT NOT NULL,
         FOREIGN KEY (user_id) REFERENCES $_usersTable(id) ON DELETE CASCADE
@@ -1015,6 +1307,11 @@ class LocalAppRepository implements AppRepository {
             profile.coreHealthMaxTrialExpiresAt?.toIso8601String(),
         'plan': profile.plan.name,
         'subscription_months': profile.subscriptionMonths,
+        'token_balance': profile.tokenBalance,
+        'token_earned': profile.tokenEarned,
+        'token_spent': profile.tokenSpent,
+        'referral_code': profile.referralCode,
+        'referred_by': profile.referredBy,
         'onboarding_completed': onboardingCompleted ? 1 : 0,
         'updated_at': DateTime.now().toIso8601String(),
       },
@@ -1210,6 +1507,7 @@ class _MemoryStore {
   final Map<String, _MemoryUserRecord> _usersById = {};
   final Map<String, String> _userIdByEmail = {};
   final Map<String, PersistedUserData> _dataByUserId = {};
+  final Map<String, _PendingRegistration> _pendingRegistrations = {};
   // userId → list of logs
   final Map<String, List<MealLog>> _mealLogsByUser = {};
   String? _currentUserId;
@@ -1283,10 +1581,11 @@ class _MemoryStore {
     );
   }
 
-  Future<AuthResult> register({
+  Future<RegisterResponseData> register({
     required String displayName,
     required String email,
     required String password,
+    String? referralCode,
   }) async {
     final normalizedName = displayName.trim();
     final normalizedEmail = _normalizeEmail(email);
@@ -1294,15 +1593,134 @@ class _MemoryStore {
       throw const AppAuthException('Email này đã được đăng ký.');
     }
 
+    if (referralCode != null && referralCode.trim().isNotEmpty) {
+      final refUpper = referralCode.trim().toUpperCase();
+      String? foundReferrerId;
+      for (final entry in _dataByUserId.entries) {
+        if (entry.value.profile.referralCode.toUpperCase() == refUpper) {
+          foundReferrerId = entry.key;
+          break;
+        }
+      }
+      if (foundReferrerId == null) {
+        throw const AppAuthException('Mã giới thiệu không hợp lệ.');
+      }
+    }
+
+    final random = Random();
+    final otp = (100000 + random.nextInt(900000)).toString();
+
+    _pendingRegistrations[normalizedEmail] = _PendingRegistration(
+      displayName: normalizedName,
+      email: normalizedEmail,
+      password: password,
+      otp: otp,
+      createdAt: DateTime.now(),
+      referralCode: referralCode,
+    );
+
+    try {
+      if (!Platform.environment.containsKey('FLUTTER_TEST')) {
+        await EmailService().sendOtpEmail(toEmail: normalizedEmail, otp: otp);
+      } else {
+        debugPrint('Skipping sending OTP email in test environment. OTP: $otp');
+      }
+    } catch (e) {
+      debugPrint('Error sending OTP email: $e. OTP: $otp');
+      throw AppAuthException('Không thể gửi email xác thực: $e. Vui lòng kiểm tra lại mạng hoặc thông tin Gmail.');
+    }
+
+    return RegisterResponseData(
+      success: true,
+      email: normalizedEmail,
+      devOtp: otp,
+    );
+  }
+
+  Future<AuthResult> verifyOtp({
+    required String email,
+    required String otp,
+  }) async {
+    final normalizedEmail = _normalizeEmail(email);
+    final pending = _pendingRegistrations[normalizedEmail];
+    if (pending == null) {
+      throw const AppAuthException('Không tìm thấy thông tin đăng ký cho email này. Vui lòng đăng ký lại.');
+    }
+
+    if (pending.otp != otp) {
+      throw const AppAuthException('Mã xác thực không chính xác.');
+    }
+
+    if (DateTime.now().difference(pending.createdAt).inMinutes > 10) {
+      _pendingRegistrations.remove(normalizedEmail);
+      throw const AppAuthException('Mã xác thực đã hết hạn. Vui lòng đăng ký lại.');
+    }
+
+    _pendingRegistrations.remove(normalizedEmail);
+
     final userId = _generateUserId();
-    final profile = _defaultProfileFor(normalizedName);
+    final myReferralCode = _generateReferralCode(pending.displayName);
+    var signupTokens = 25;
+    var referrerId = '';
+
+    if (pending.referralCode != null && pending.referralCode!.trim().isNotEmpty) {
+      final refUpper = pending.referralCode!.trim().toUpperCase();
+      String? foundReferrerId;
+      for (final entry in _dataByUserId.entries) {
+        if (entry.value.profile.referralCode.toUpperCase() == refUpper) {
+          foundReferrerId = entry.key;
+          break;
+        }
+      }
+      if (foundReferrerId == null) {
+        throw const AppAuthException('Mã giới thiệu không hợp lệ.');
+      }
+      if (foundReferrerId == userId) {
+        throw const AppAuthException('Không thể tự dùng mã giới thiệu của chính mình.');
+      }
+
+      signupTokens = 65;
+      referrerId = foundReferrerId;
+
+      int count = 0;
+      for (final data in _dataByUserId.values) {
+        if (data.profile.referredBy == referrerId) {
+          count++;
+        }
+      }
+      final nextCount = count + 1;
+      if (nextCount > 0 && nextCount % 5 == 0) {
+        final referrerData = _dataByUserId[referrerId];
+        if (referrerData != null) {
+          _dataByUserId[referrerId] = PersistedUserData(
+            profile: referrerData.profile.copyWith(
+              tokenBalance: referrerData.profile.tokenBalance + 20,
+              tokenEarned: referrerData.profile.tokenEarned + 20,
+            ),
+            weightHistory: referrerData.weightHistory,
+            completedWorkoutDays: referrerData.completedWorkoutDays,
+            completedMealDays: referrerData.completedMealDays,
+            cart: referrerData.cart,
+            orders: referrerData.orders,
+          );
+        }
+      }
+    }
+
+    final profile = _defaultProfileFor(pending.displayName).copyWith(
+      tokenBalance: signupTokens,
+      tokenEarned: signupTokens,
+      referralCode: myReferralCode,
+      referredBy: referrerId,
+    );
+
     final salt = _generateSalt();
     final record = _MemoryUserRecord(
       id: userId,
       email: normalizedEmail,
-      passwordHash: _hashPasswordWithSalt(password, salt),
+      passwordHash: _hashPasswordWithSalt(pending.password, salt),
       passwordSalt: salt,
-      displayName: normalizedName,
+      displayName: pending.displayName,
       onboardingCompleted: false,
     );
     _usersById[userId] = record;
@@ -1328,6 +1746,50 @@ class _MemoryStore {
     );
   }
 
+  Future<RegisterResponseData> resendOtp({
+    required String email,
+  }) async {
+    final normalizedEmail = _normalizeEmail(email);
+    final pending = _pendingRegistrations[normalizedEmail];
+    if (pending == null) {
+      throw const AppAuthException('Không tìm thấy thông tin đăng ký cho email này. Vui lòng đăng ký lại.');
+    }
+
+    final now = DateTime.now();
+    if (now.difference(pending.createdAt).inSeconds < 60) {
+      throw const AppAuthException('Vui lòng đợi 60 giây trước khi yêu cầu gửi lại mã.');
+    }
+
+    final random = Random();
+    final newOtp = (100000 + random.nextInt(900000)).toString();
+
+    _pendingRegistrations[normalizedEmail] = _PendingRegistration(
+      displayName: pending.displayName,
+      email: pending.email,
+      password: pending.password,
+      otp: newOtp,
+      createdAt: now,
+      referralCode: pending.referralCode,
+    );
+
+    try {
+      if (!Platform.environment.containsKey('FLUTTER_TEST')) {
+        await EmailService().sendOtpEmail(toEmail: normalizedEmail, otp: newOtp);
+      } else {
+        debugPrint('Skipping sending OTP email in test environment. OTP: $newOtp');
+      }
+    } catch (e) {
+      debugPrint('Error sending OTP email: $e. OTP: $newOtp');
+      throw AppAuthException('Không thể gửi lại email xác thực: $e. Vui lòng kiểm tra lại mạng hoặc thông tin Gmail.');
+    }
+
+    return RegisterResponseData(
+      success: true,
+      email: normalizedEmail,
+      devOtp: newOtp,
+    );
+  }
+
   Future<PersistedUserData> saveOnboardingProfile({
     required String userId,
     required DemoProfile profile,
@@ -1344,6 +1806,29 @@ class _MemoryStore {
       completedMealDays: const {},
       cart: _dataByUserId[userId]?.cart ?? const [],
       orders: _dataByUserId[userId]?.orders ?? const [],
+    );
+    _dataByUserId[userId] = updated;
+    return updated;
+  }
+
+  Future<PersistedUserData> updateTokenWallet({
+    required String userId,
+    required int tokenBalance,
+    required int tokenEarned,
+    required int tokenSpent,
+  }) async {
+    final current = _requireUserData(userId);
+    final updated = PersistedUserData(
+      profile: current.profile.copyWith(
+        tokenBalance: tokenBalance,
+        tokenEarned: tokenEarned,
+        tokenSpent: tokenSpent,
+      ),
+      weightHistory: current.weightHistory,
+      completedWorkoutDays: current.completedWorkoutDays,
+      completedMealDays: current.completedMealDays,
+      cart: current.cart,
+      orders: current.orders,
     );
     _dataByUserId[userId] = updated;
     return updated;
@@ -1612,7 +2097,10 @@ DemoProfile _defaultProfileFor(String displayName) {
   return DemoData.initialProfile.copyWith(
     name: displayName,
     plan: SubscriptionPlan.free,
-    subscriptionMonths: 1,
+    subscriptionMonths: 0,
+    tokenBalance: 0,
+    tokenEarned: 0,
+    tokenSpent: 0,
   );
 }
 
@@ -1670,6 +2158,14 @@ DemoProfile _profileFromRow(Map<String, Object?> row) {
     ),
     subscriptionMonths: row['subscription_months'] as int? ??
         DemoData.initialProfile.subscriptionMonths,
+    tokenBalance:
+        row['token_balance'] as int? ?? DemoData.initialProfile.tokenBalance,
+    tokenEarned:
+        row['token_earned'] as int? ?? DemoData.initialProfile.tokenEarned,
+    tokenSpent:
+        row['token_spent'] as int? ?? DemoData.initialProfile.tokenSpent,
+    referralCode: row['referral_code'] as String? ?? '',
+    referredBy: row['referred_by'] as String? ?? '',
   );
 }
 
@@ -1749,6 +2245,14 @@ String _recordedAtFromLabel(String label) {
 }
 
 String _normalizeEmail(String value) => value.trim().toLowerCase();
+
+String _generateReferralCode(String name) {
+  final cleanName = name.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '').toUpperCase();
+  final prefix = cleanName.length > 8 ? cleanName.substring(0, 8) : (cleanName.isEmpty ? 'CORE' : cleanName);
+  final rng = Random();
+  final suffix = rng.nextInt(900000) + 100000;
+  return '$prefix-$suffix';
+}
 
 // Legacy static salt — used only for verifying passwords created before per-user salt migration.
 const _kPasswordSalt = 'CHv1_2026_s@lt';

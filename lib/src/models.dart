@@ -1,8 +1,10 @@
-enum AppStage { welcome, intro, auth, onboarding, home }
+enum AppStage { welcome, intro, auth, verifyOtp, onboarding, home }
 
 enum AuthMode { signIn, signUp }
 
 enum SubscriptionPlan { free, meal, workout, max }
+
+enum TokenPackId { starter, basic, plus, pro, max, power, elite, founder }
 
 enum GoalType { loseWeight, maintain, gainMuscle }
 
@@ -46,6 +48,11 @@ class DemoProfile {
     this.nutritionPriorities = const [],
     required this.plan,
     required this.subscriptionMonths,
+    this.tokenBalance = 0,
+    this.tokenEarned = 0,
+    this.tokenSpent = 0,
+    this.referralCode = '',
+    this.referredBy = '',
     this.subscriptionStartDate,
     this.coreHealthMaxTrialExpiresAt,
   });
@@ -76,6 +83,11 @@ class DemoProfile {
   final List<String> nutritionPriorities;
   final SubscriptionPlan plan;
   final int subscriptionMonths;
+  final int tokenBalance;
+  final int tokenEarned;
+  final int tokenSpent;
+  final String referralCode;
+  final String referredBy;
 
   /// The exact moment this subscription was activated. Null = demo/free (no expiry check).
   final DateTime? subscriptionStartDate;
@@ -175,18 +187,14 @@ class DemoProfile {
   }
 
   bool get hasMealPlan =>
-      hasActiveCoreHealthMaxTrial ||
-      (!isSubscriptionExpired &&
-          (plan == SubscriptionPlan.meal || plan == SubscriptionPlan.max));
+      hasActiveCoreHealthMaxTrial || tokenBalance >= TokenCosts.fullDayMealPlan;
 
   bool get hasWorkoutPlan =>
       hasActiveCoreHealthMaxTrial ||
-      (!isSubscriptionExpired &&
-          (plan == SubscriptionPlan.workout || plan == SubscriptionPlan.max));
+      tokenBalance >= TokenCosts.adaptiveWeeklyPlan;
 
   bool get hasAiCoach =>
-      hasActiveCoreHealthMaxTrial ||
-      (!isSubscriptionExpired && plan != SubscriptionPlan.free);
+      hasActiveCoreHealthMaxTrial || tokenBalance >= TokenCosts.basicAiChat;
 
   bool canAccessCoach(CoachType type) => switch (type) {
         CoachType.nutrition => hasMealPlan,
@@ -215,6 +223,11 @@ class DemoProfile {
     List<String>? nutritionPriorities,
     SubscriptionPlan? plan,
     int? subscriptionMonths,
+    int? tokenBalance,
+    int? tokenEarned,
+    int? tokenSpent,
+    String? referralCode,
+    String? referredBy,
     // Use Object? sentinel so callers can explicitly pass null to clear the date.
     Object? subscriptionStartDate = _keep,
     Object? coreHealthMaxTrialExpiresAt = _keep,
@@ -240,6 +253,11 @@ class DemoProfile {
       nutritionPriorities: nutritionPriorities ?? this.nutritionPriorities,
       plan: plan ?? this.plan,
       subscriptionMonths: subscriptionMonths ?? this.subscriptionMonths,
+      tokenBalance: tokenBalance ?? this.tokenBalance,
+      tokenEarned: tokenEarned ?? this.tokenEarned,
+      tokenSpent: tokenSpent ?? this.tokenSpent,
+      referralCode: referralCode ?? this.referralCode,
+      referredBy: referredBy ?? this.referredBy,
       subscriptionStartDate: subscriptionStartDate == _keep
           ? this.subscriptionStartDate
           : subscriptionStartDate as DateTime?,
@@ -249,6 +267,97 @@ class DemoProfile {
     );
   }
 }
+
+class TokenPack {
+  const TokenPack({
+    required this.id,
+    required this.title,
+    required this.priceK,
+    required this.tokens,
+    required this.description,
+    this.recommended = false,
+  });
+
+  final TokenPackId id;
+  final String title;
+  final int priceK;
+  final int tokens;
+  final String description;
+  final bool recommended;
+
+  String get idValue => id.name;
+  int get pricePerToken => (priceK * 1000 / tokens).round();
+}
+
+class TokenCosts {
+  const TokenCosts._();
+
+  static const int basicAiChat = 1;
+  static const int advancedCoachAnswer = 3;
+  static const int fullDayMealPlan = 12;
+  static const int foodScan = 3;
+  static const int adaptiveWeeklyPlan = 20;
+}
+
+const tokenPacks = <TokenPack>[
+  TokenPack(
+    id: TokenPackId.starter,
+    title: 'Starter',
+    priceK: 49,
+    tokens: 55,
+    description: 'Nạp nhanh để thử AI plan và scan.',
+  ),
+  TokenPack(
+    id: TokenPackId.basic,
+    title: 'Basic',
+    priceK: 99,
+    tokens: 120,
+    description: 'Mệnh giá phổ biến nhất cho user mới bắt đầu.',
+    recommended: true,
+  ),
+  TokenPack(
+    id: TokenPackId.plus,
+    title: 'Plus',
+    priceK: 149,
+    tokens: 190,
+    description: 'Thoải mái generate plan và refresh nhiều lần hơn.',
+  ),
+  TokenPack(
+    id: TokenPackId.pro,
+    title: 'Pro',
+    priceK: 199,
+    tokens: 260,
+    description: 'Đủ cho nhiều lần generate plan và top-up chat.',
+  ),
+  TokenPack(
+    id: TokenPackId.max,
+    title: 'Max',
+    priceK: 299,
+    tokens: 420,
+    description: 'Phù hợp user dùng AI đều mỗi tuần.',
+  ),
+  TokenPack(
+    id: TokenPackId.power,
+    title: 'Power',
+    priceK: 499,
+    tokens: 760,
+    description: 'Dành cho người dùng AI liên tục và scan thường xuyên.',
+  ),
+  TokenPack(
+    id: TokenPackId.elite,
+    title: 'Elite',
+    priceK: 799,
+    tokens: 1280,
+    description: 'Pack lớn cho usage cao, tiết kiệm hơn theo token.',
+  ),
+  TokenPack(
+    id: TokenPackId.founder,
+    title: 'Founder',
+    priceK: 1000,
+    tokens: 1650,
+    description: 'Mệnh giá cao nhất để scale usage dài hạn.',
+  ),
+];
 
 // Sentinel so copyWith can distinguish "not passed" from "explicitly null".
 const Object _keep = Object();
@@ -509,3 +618,16 @@ extension SubscriptionPlanLabel on SubscriptionPlan {
     }
   }
 }
+
+class RegisterResponseData {
+  const RegisterResponseData({
+    required this.success,
+    required this.email,
+    this.devOtp,
+  });
+
+  final bool success;
+  final String email;
+  final String? devOtp;
+}
+

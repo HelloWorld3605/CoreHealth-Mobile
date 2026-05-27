@@ -250,9 +250,12 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                   ),
                   const SizedBox(height: 10),
                   Text(
-                    'Miễn phí 7 ngày • Không cần thẻ • Hủy bất cứ lúc nào',
+                    'Tặng ngay 25 token AI miễn phí khi đăng ký tài khoản mới',
                     textAlign: TextAlign.center,
-                    style: textTheme.bodyMedium,
+                    style: textTheme.bodyMedium?.copyWith(
+                      color: AppPalette.emeraldDeep,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                   const SizedBox(height: 34),
                   _SectionBlock(
@@ -377,30 +380,41 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                   ),
                   const SizedBox(height: 28),
                   const _SectionBlock(
-                    title: 'Gói dịch vụ linh hoạt',
-                    subtitle: 'Chọn gói phù hợp với mục tiêu của bạn',
+                    title: 'Nạp token linh hoạt',
+                    subtitle: 'Một ví token dùng chung cho toàn bộ tính năng AI',
                     child: Column(
                       children: [
                         _PricingCard(
-                          title: 'CoreHealth Free',
-                          price: 'Miễn phí',
+                          title: 'Tài khoản Starter (Đăng ký mới)',
+                          price: 'Tặng 25 token',
                           features: [
-                            'Kế hoạch 7 ngày',
-                            'AI Coach cơ bản',
-                            'Theo dõi cơ bản',
+                            '25 token AI miễn phí',
+                            'Theo dõi cân nặng và calo cơ bản',
+                            'Trải nghiệm AI Coach & Food Scan',
                           ],
                         ),
                         SizedBox(height: 14),
                         _PricingCard(
-                          title: 'CoreHealth Max',
-                          price: '159k/tháng',
+                          title: 'Gói Token Basic',
+                          price: '99.000đ',
                           highlight: true,
                           badge: 'Phổ biến nhất',
                           features: [
-                            'Tất cả tính năng',
-                            'AI Coach không giới hạn',
-                            'Kế hoạch theo subscription',
-                            'CoreHealth Shop',
+                            'Nhận ngay 120 token vào ví chung',
+                            'Đủ dùng cho ~40 lần quét món ăn AI',
+                            'Chat tư vấn sức khỏe & dinh dưỡng',
+                            'Kích hoạt tính năng Smart Rebalance',
+                          ],
+                        ),
+                        SizedBox(height: 14),
+                        _PricingCard(
+                          title: 'Gói Token Pro',
+                          price: '199.000đ',
+                          features: [
+                            'Nhận ngay 260 token vào ví chung',
+                            'Tiết kiệm hơn (~765đ/token)',
+                            'Phù hợp người tập luyện hàng ngày',
+                            'Thoải mái tạo AI Meal/Workout plan',
                           ],
                         ),
                       ],

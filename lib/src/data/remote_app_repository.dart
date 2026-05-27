@@ -39,16 +39,59 @@ class RemoteAppRepository implements AppRepository {
   }
 
   @override
-  Future<AuthResult> register({
+  Future<RegisterResponseData> register({
     required String displayName,
     required String email,
     required String password,
+    String? referralCode,
+  }) async {
+    final json = await _request(
+        'POST',
+        '/auth/register',
+        {
+          'displayName': displayName,
+          'email': email,
+          'password': password,
+          if (referralCode != null && referralCode.isNotEmpty)
+            'referralCode': referralCode,
+        },
+        false);
+    return RegisterResponseData(
+      success: json['needsVerification'] as bool? ??
+          json['success'] as bool? ??
+          false,
+      email: json['email'] as String? ?? email,
+      devOtp: json['devOtp'] as String?,
+    );
+  }
+
+  @override
+  Future<AuthResult> verifyOtp({
+    required String email,
+    required String otp,
   }) {
-    return _auth('/auth/register', {
-      'displayName': displayName,
+    return _auth('/auth/verify-otp', {
       'email': email,
-      'password': password,
+      'otp': otp,
     });
+  }
+
+  @override
+  Future<RegisterResponseData> resendOtp({
+    required String email,
+  }) async {
+    final json = await _request(
+        'POST',
+        '/auth/resend-otp',
+        {
+          'email': email,
+        },
+        false);
+    return RegisterResponseData(
+      success: json['sent'] as bool? ?? false,
+      email: email,
+      devOtp: json['devOtp'] as String?,
+    );
   }
 
   @override
@@ -78,6 +121,78 @@ class RemoteAppRepository implements AppRepository {
       'months': months,
     });
     return _userData(json);
+  }
+
+  @override
+  Future<PersistedUserData> updateTokenWallet({
+    required String userId,
+    required int tokenBalance,
+    required int tokenEarned,
+    required int tokenSpent,
+  }) async {
+    try {
+      final json = await _request('POST', '/me/token-wallet', {
+        'tokenBalance': tokenBalance,
+        'tokenEarned': tokenEarned,
+        'tokenSpent': tokenSpent,
+      });
+      return _userData(json);
+    } on AppAuthException {
+      final bootstrap = await this.bootstrap();
+      final userData = bootstrap.userData;
+      if (userData == null) rethrow;
+      return userData;
+    }
+  }
+
+  Future<PersistedUserData> purchaseTokenPack({
+    required TokenPack pack,
+  }) async {
+    final json = await _request(
+      'POST',
+      '/billing/token-packs/${pack.idValue}/purchase',
+    );
+    final walletBalance = _readInt(json, 'walletBalance', pack.tokens);
+    final bootstrap = await this.bootstrap();
+    final current = bootstrap.userData;
+    if (current == null) {
+      return PersistedUserData(
+        profile: DemoProfile(
+          name: 'CoreHealth User',
+          age: 28,
+          gender: Gender.other,
+          heightCm: 168,
+          weightKg: 65,
+          targetWeightKg: 62,
+          goal: GoalType.maintain,
+          activityLevel: ActivityLevel.moderate,
+          schedule: '',
+          dietaryRestrictions: const [],
+          allergies: const [],
+          healthConditions: const [],
+          plan: SubscriptionPlan.free,
+          subscriptionMonths: 0,
+          tokenBalance: walletBalance,
+          tokenEarned: walletBalance,
+        ),
+        weightHistory: const [],
+        completedWorkoutDays: const {},
+        completedMealDays: const {},
+        cart: const [],
+        orders: const [],
+      );
+    }
+    return PersistedUserData(
+      profile: current.profile.copyWith(
+        tokenBalance: walletBalance,
+        tokenEarned: current.profile.tokenEarned + pack.tokens,
+      ),
+      weightHistory: current.weightHistory,
+      completedWorkoutDays: current.completedWorkoutDays,
+      completedMealDays: current.completedMealDays,
+      cart: current.cart,
+      orders: current.orders,
+    );
   }
 
   @override
@@ -256,6 +371,8 @@ class RemoteAppRepository implements AppRepository {
   }
 
   DemoProfile _profile(Map<String, dynamic> json) {
+    final walletTokens = _readInt(json, 'walletTokens',
+        _readInt(json, 'walletBalance', _readInt(json, 'tokenBalance', 0)));
     return DemoProfile(
       name: json['name'] as String? ?? 'CoreHealth User',
       age: (json['age'] as num?)?.toInt() ?? 28,
@@ -278,6 +395,11 @@ class RemoteAppRepository implements AppRepository {
       nutritionPriorities: _stringList(json['nutritionPriorities']),
       plan: _enum(SubscriptionPlan.values, json['plan'], SubscriptionPlan.free),
       subscriptionMonths: (json['subscriptionMonths'] as num?)?.toInt() ?? 1,
+      tokenBalance: walletTokens,
+      tokenEarned: _readInt(json, 'tokenEarned', walletTokens),
+      tokenSpent: (json['tokenSpent'] as num?)?.toInt() ?? 0,
+      referralCode: json['referralCode'] as String? ?? '',
+      referredBy: json['referredBy'] as String? ?? '',
       subscriptionStartDate: json['subscriptionStartDate'] == null
           ? null
           : DateTime.tryParse(json['subscriptionStartDate'].toString()),
@@ -310,6 +432,11 @@ class RemoteAppRepository implements AppRepository {
         'nutritionPriorities': profile.nutritionPriorities,
         'plan': profile.plan.name,
         'subscriptionMonths': profile.subscriptionMonths,
+        'tokenBalance': profile.tokenBalance,
+        'tokenEarned': profile.tokenEarned,
+        'tokenSpent': profile.tokenSpent,
+        'referralCode': profile.referralCode,
+        'referredBy': profile.referredBy,
         'subscriptionStartDate':
             profile.subscriptionStartDate?.toIso8601String(),
         'coreHealthMaxTrialExpiresAt':
@@ -384,6 +511,13 @@ class RemoteAppRepository implements AppRepository {
 
   List<String> _stringList(Object? value) =>
       _list(value).map((e) => e.toString()).toList();
+
+  int _readInt(Map<String, dynamic> json, String key, int fallback) {
+    final value = json[key];
+    if (value is num) return value.toInt();
+    if (value is String) return int.tryParse(value) ?? fallback;
+    return fallback;
+  }
 
   Object? _tryDecode(String raw) {
     try {

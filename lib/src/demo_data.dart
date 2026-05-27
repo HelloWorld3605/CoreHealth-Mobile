@@ -31,8 +31,10 @@ class DemoData {
     mealBudget: 'Cân bằng',
     cookingTime: '15-30 phút',
     nutritionPriorities: ['Giàu protein', 'Món Việt', 'Meal prep'],
-    plan: SubscriptionPlan.max,
-    subscriptionMonths: 3,
+    plan: SubscriptionPlan.free,
+    subscriptionMonths: 0,
+    tokenBalance: 120,
+    tokenEarned: 120,
   );
 
   static const weightEntries = [

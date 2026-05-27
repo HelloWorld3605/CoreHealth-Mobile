@@ -51,3 +51,7 @@ web-run.out
 
 # Reference demo install
 _reference_demo/node_modules/
+
+# Local Dart config file containing credentials
+/lib/src/config/env.dart
+

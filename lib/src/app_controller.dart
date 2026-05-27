@@ -36,6 +36,8 @@ class AppController extends ChangeNotifier {
   Set<int> _completedMealDays = const {};
   List<Product> _cart = const [];
   List<OrderSummary> _orders = const [];
+  String? _pendingVerificationEmail;
+  String? _devOtp;
 
   List<InsightItem> _insights = DemoData.dashboardInsights;
   bool _insightsLoading = false;
@@ -56,6 +58,8 @@ class AppController extends ChangeNotifier {
   bool get showPostOnboardingOffer => _showPostOnboardingOffer;
   String? get userEmail => _session?.email;
   bool get isAuthenticated => _session != null;
+  String? get pendingVerificationEmail => _pendingVerificationEmail;
+  String? get devOtp => _devOtp;
   DemoProfile get profile => _profile;
   List<WeightEntry> get weightHistory => List.unmodifiable(_weightHistory);
   List<MealItem> get todayMeals =>
@@ -65,7 +69,8 @@ class AppController extends ChangeNotifier {
   int get cartCount => _cart.length;
   int get cartTotalK => _cart.fold(0, (sum, item) => sum + item.priceK);
   int get streakCount => _completedWorkoutDays.length;
-  int get totalPlanDays => profile.subscriptionMonths * 30;
+  int get totalPlanDays => 30;
+  int get tokenBalance => _profile.tokenBalance;
   DateTime? get subscriptionExpiresAt => profile.subscriptionExpiresAt;
   int? get daysUntilExpiry => profile.daysUntilExpiry;
 
@@ -176,12 +181,6 @@ class AppController extends ChangeNotifier {
     notifyListeners();
 
     if (_stage == AppStage.home) {
-      // Auto-upgrade to max for testing
-      if (_session?.email == 'tuanhai362005t@gmail.com' &&
-          _profile.plan != SubscriptionPlan.max) {
-        updateSubscription(SubscriptionPlan.max, months: 12);
-      }
-      await _checkAndExpireSubscription();
       _refreshInsightsBackground();
       await _loadTodayLogs();
       unawaited(_initializeHomeNotifications());
@@ -252,24 +251,6 @@ class AppController extends ChangeNotifier {
   String _todayDateKey() {
     final now = DateTime.now();
     return '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
-  }
-
-  /// Downgrade to free if the subscription has expired. Called on every app start.
-  Future<void> _checkAndExpireSubscription() async {
-    if (!_profile.isSubscriptionExpired) return;
-    final downgraded = _profile.copyWith(
-      plan: SubscriptionPlan.free,
-      subscriptionMonths: 0,
-      subscriptionStartDate: null,
-    );
-    _profile = downgraded;
-    notifyListeners();
-    // Persist the downgrade so it survives restarts.
-    _enqueueMutation((userId) => _repository.updateSubscription(
-          userId: userId,
-          plan: SubscriptionPlan.free,
-          months: 0,
-        ));
   }
 
   bool isWorkoutCompleted(int dayNumber) {
@@ -352,25 +333,85 @@ class AppController extends ChangeNotifier {
     required String displayName,
     required String email,
     required String password,
+    String? referralCode,
   }) async {
     if (password.length < 8) {
       return 'Mật khẩu cần ít nhất 8 ký tự.';
     }
 
     try {
-      final result = await _repository.register(
+      final response = await _repository.register(
         displayName: displayName,
         email: email,
         password: password,
+        referralCode: referralCode,
       );
-      _applyAuthentication(result);
-      return null;
+      if (response.success) {
+        _pendingVerificationEmail = response.email;
+        _devOtp = response.devOtp;
+        _stage = AppStage.verifyOtp;
+        notifyListeners();
+        return null;
+      } else {
+        return 'Đăng ký không thành công. Vui lòng thử lại.';
+      }
     } on AppAuthException catch (error) {
       return error.message;
     } catch (e, st) {
       debugPrint('register error: $e\n$st');
       return 'Không thể tạo tài khoản lúc này.';
     }
+  }
+
+  Future<String?> verifyOtp({
+    required String email,
+    required String otp,
+  }) async {
+    try {
+      final result = await _repository.verifyOtp(
+        email: email,
+        otp: otp,
+      );
+      _pendingVerificationEmail = null;
+      _devOtp = null;
+      _applyAuthentication(result);
+      _refreshInsightsBackground();
+      return null;
+    } on AppAuthException catch (error) {
+      return error.message;
+    } catch (e, st) {
+      debugPrint('verifyOtp error: $e\n$st');
+      return 'Không thể xác thực OTP lúc này.';
+    }
+  }
+
+  Future<String?> resendOtp({
+    required String email,
+  }) async {
+    try {
+      final response = await _repository.resendOtp(
+        email: email,
+      );
+      if (response.success) {
+        _devOtp = response.devOtp;
+        notifyListeners();
+        return null;
+      } else {
+        return 'Gửi lại mã OTP thất bại.';
+      }
+    } on AppAuthException catch (error) {
+      return error.message;
+    } catch (e, st) {
+      debugPrint('resendOtp error: $e\n$st');
+      return 'Không thể gửi lại mã OTP lúc này.';
+    }
+  }
+
+  void cancelVerification() {
+    _pendingVerificationEmail = null;
+    _devOtp = null;
+    _stage = AppStage.auth;
+    notifyListeners();
   }
 
   Future<String?> finishOnboarding(DemoProfile profile) async {
@@ -382,7 +423,7 @@ class AppController extends ChangeNotifier {
     try {
       final userData = await _repository.saveOnboardingProfile(
         userId: session.userId,
-        profile: _withCoreHealthMaxTrial(profile),
+        profile: _withStarterTokens(profile),
       );
       _session = AppUserSession(
         userId: session.userId,
@@ -407,7 +448,10 @@ class AppController extends ChangeNotifier {
     _mealPlanGenerating = true;
     notifyListeners();
     final tpl = await _aiService.generateMealPlan(profile);
-    if (tpl.isNotEmpty) _aiMealTemplate = tpl;
+    if (tpl.isNotEmpty) {
+      _aiMealTemplate = tpl;
+      _spendTokens(TokenCosts.fullDayMealPlan);
+    }
     _mealPlanGenerating = false;
     notifyListeners();
   }
@@ -417,7 +461,10 @@ class AppController extends ChangeNotifier {
     _workoutPlanGenerating = true;
     notifyListeners();
     final tpl = await _aiService.generateWorkoutPlan(profile);
-    if (tpl.isNotEmpty) _aiWorkoutTemplate = tpl;
+    if (tpl.isNotEmpty) {
+      _aiWorkoutTemplate = tpl;
+      _spendTokens(TokenCosts.adaptiveWeeklyPlan);
+    }
     _workoutPlanGenerating = false;
     notifyListeners();
   }
@@ -454,6 +501,9 @@ class AppController extends ChangeNotifier {
         history: history,
         coachType: type,
       );
+      _spendTokens(type == CoachType.wellness
+          ? TokenCosts.basicAiChat
+          : TokenCosts.advancedCoachAnswer);
       _chatHistories[type] = [
         ..._chatHistories[type]!,
         ChatMessage(text: reply, isUser: false),
@@ -559,23 +609,22 @@ class AppController extends ChangeNotifier {
     });
   }
 
-  void activatePaidSubscription(SubscriptionPlan plan, {required int months}) {
-    if (plan == SubscriptionPlan.free) {
-      updateSubscription(plan, months: months);
-      return;
-    }
-
-    final trialCredit = _remainingCoreHealthMaxTrial();
-    final paidProfile = _profile.copyWith(
-      plan: plan,
-      subscriptionMonths: months,
-      subscriptionStartDate: DateTime.now().add(trialCredit),
+  void activateTokenPack(TokenPack pack) {
+    final updatedProfile = _profile.copyWith(
+      tokenBalance: _profile.tokenBalance + pack.tokens,
+      tokenEarned: _profile.tokenEarned + pack.tokens,
+      plan: SubscriptionPlan.free,
+      subscriptionMonths: 0,
+      subscriptionStartDate: null,
     );
-
+    _profile = updatedProfile;
+    notifyListeners();
     _enqueueMutation((userId) {
-      return _repository.saveOnboardingProfile(
+      return _repository.updateTokenWallet(
         userId: userId,
-        profile: paidProfile,
+        tokenBalance: updatedProfile.tokenBalance,
+        tokenEarned: updatedProfile.tokenEarned,
+        tokenSpent: updatedProfile.tokenSpent,
       );
     });
   }
@@ -586,7 +635,7 @@ class AppController extends ChangeNotifier {
       return 'Phiên đăng nhập không hợp lệ.';
     }
 
-    final trialProfile = _withCoreHealthMaxTrial(_profile);
+    final trialProfile = _withStarterTokens(_profile);
 
     try {
       final userData = await _repository.saveOnboardingProfile(
@@ -600,7 +649,7 @@ class AppController extends ChangeNotifier {
       return null;
     } catch (e, st) {
       debugPrint('claimCoreHealthMaxTrial error: $e\n$st');
-      return 'Không thể kích hoạt CoreHealth Max lúc này.';
+      return 'Không thể kích hoạt token miễn phí lúc này.';
     }
   }
 
@@ -649,7 +698,7 @@ class AppController extends ChangeNotifier {
   }
 
   void _refreshInsightsBackground() {
-    if (_profile.plan == SubscriptionPlan.free) return;
+    if (!_profile.hasAiCoach) return;
     refreshInsights().ignore();
   }
 
@@ -661,12 +710,6 @@ class AppController extends ChangeNotifier {
         ? AppStage.home
         : AppStage.onboarding;
     notifyListeners();
-
-    // Auto-upgrade to max for testing
-    if (result.session.email == 'tuanhai362005t@gmail.com' &&
-        _profile.plan != SubscriptionPlan.max) {
-      updateSubscription(SubscriptionPlan.max, months: 12);
-    }
   }
 
   void _applyUserData(PersistedUserData data, {required bool notify}) {
@@ -734,42 +777,40 @@ class AppController extends ChangeNotifier {
     unawaited(_writeQueue);
   }
 
-  DateTime _subscriptionStartForRemainingDays(int days) {
-    final targetExpiry = DateTime.now().add(Duration(days: days));
-    final year =
-        targetExpiry.month == 1 ? targetExpiry.year - 1 : targetExpiry.year;
-    final month = targetExpiry.month == 1 ? 12 : targetExpiry.month - 1;
-    final lastDay = DateTime(year, month + 1, 0).day;
-    final day = targetExpiry.day > lastDay ? lastDay : targetExpiry.day;
-    return DateTime(
-      year,
-      month,
-      day,
-      targetExpiry.hour,
-      targetExpiry.minute,
-      targetExpiry.second,
+  void _spendTokens(int amount) {
+    if (amount <= 0 || _profile.hasActiveCoreHealthMaxTrial) return;
+    final updatedProfile = _profile.copyWith(
+      tokenBalance: (_profile.tokenBalance - amount).clamp(0, 1 << 31).toInt(),
+      tokenSpent: _profile.tokenSpent + amount,
     );
+    _profile = updatedProfile;
+    _enqueueMutation((userId) {
+      return _repository.updateTokenWallet(
+        userId: userId,
+        tokenBalance: updatedProfile.tokenBalance,
+        tokenEarned: updatedProfile.tokenEarned,
+        tokenSpent: updatedProfile.tokenSpent,
+      );
+    });
   }
 
-  Duration _remainingCoreHealthMaxTrial() {
-    final expiresAt = _profile.coreHealthMaxTrialExpiresAt;
-    if (expiresAt == null) {
-      return Duration.zero;
-    }
-    final remaining = expiresAt.difference(DateTime.now());
-    return remaining.isNegative ? Duration.zero : remaining;
-  }
-
-  DemoProfile _withCoreHealthMaxTrial(DemoProfile profile) {
-    if (profile.hasActiveCoreHealthMaxTrial) {
+  DemoProfile _withStarterTokens(DemoProfile profile) {
+    if (profile.coreHealthMaxTrialExpiresAt != null) {
       return profile;
     }
-    final trialExpiresAt = DateTime.now().add(const Duration(days: 7));
+    if (profile.tokenBalance > 0) {
+      return profile.copyWith(
+        coreHealthMaxTrialExpiresAt: DateTime.now().add(const Duration(days: 7)),
+      );
+    }
+    const starterTokens = 25;
     return profile.copyWith(
-      plan: SubscriptionPlan.max,
-      subscriptionMonths: 1,
-      subscriptionStartDate: _subscriptionStartForRemainingDays(7),
-      coreHealthMaxTrialExpiresAt: trialExpiresAt,
+      plan: SubscriptionPlan.free,
+      subscriptionMonths: 0,
+      subscriptionStartDate: null,
+      tokenBalance: profile.tokenBalance + starterTokens,
+      tokenEarned: profile.tokenEarned + starterTokens,
+      coreHealthMaxTrialExpiresAt: DateTime.now().add(const Duration(days: 7)),
     );
   }
 }
