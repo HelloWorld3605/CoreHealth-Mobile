@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../app_controller.dart';
 import '../demo_data.dart';
@@ -9,6 +10,7 @@ import '../models.dart';
 import '../widgets/adaptive.dart';
 import '../theme.dart';
 import '../widgets/visuals.dart';
+import 'ai_chat_screen.dart';
 import 'cart_screen.dart';
 import 'edit_profile_screen.dart';
 import 'food_scan_sheet.dart';
@@ -24,13 +26,21 @@ import 'workout_player_screen.dart';
 import 'orders_screen.dart';
 import 'settings_screen.dart';
 import 'schedule_screen.dart';
+import 'token_history_screen.dart';
 
-void _showFoodScanSheet(BuildContext context) {
+void _showFoodScanSheet(BuildContext context,
+    {bool triggerCameraDirectly = false}) {
   showModalBottomSheet(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
-    builder: (_) => const FoodScanSheet(),
+    builder: (_) => FoodScanSheet(triggerCameraDirectly: triggerCameraDirectly),
+  );
+}
+
+void _openAiChatPage(BuildContext context) {
+  Navigator.of(context).push(
+    MaterialPageRoute<void>(builder: (_) => const AiChatScreen()),
   );
 }
 
@@ -60,7 +70,8 @@ class _HomeShellState extends State<HomeShell> {
             onTap: () {
               Navigator.of(sheetContext).pop();
               Navigator.of(context).push(
-                MaterialPageRoute<void>(builder: (_) => const ExerciseLibraryScreen()),
+                MaterialPageRoute<void>(
+                    builder: (_) => const ExerciseLibraryScreen()),
               );
             }
           ),
@@ -96,7 +107,8 @@ class _HomeShellState extends State<HomeShell> {
             onTap: () {
               Navigator.of(sheetContext).pop();
               Navigator.of(context).push(
-                MaterialPageRoute<void>(builder: (_) => const FavoritesScreen()),
+                MaterialPageRoute<void>(
+                    builder: (_) => const FavoritesScreen()),
               );
             }
           ),
@@ -108,7 +120,8 @@ class _HomeShellState extends State<HomeShell> {
             onTap: () {
               Navigator.of(sheetContext).pop();
               Navigator.of(context).push(
-                MaterialPageRoute<void>(builder: (_) => const ChallengesScreen()),
+                MaterialPageRoute<void>(
+                    builder: (_) => const ChallengesScreen()),
               );
             }
           ),
@@ -120,7 +133,8 @@ class _HomeShellState extends State<HomeShell> {
             onTap: () {
               Navigator.of(sheetContext).pop();
               Navigator.of(context).push(
-                MaterialPageRoute<void>(builder: (_) => const LeaderboardScreen()),
+                MaterialPageRoute<void>(
+                    builder: (_) => const LeaderboardScreen()),
               );
             }
           ),
@@ -195,7 +209,8 @@ class _HomeShellState extends State<HomeShell> {
                   Expanded(
                     child: GridView.builder(
                       controller: scrollController,
-                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
                         crossAxisCount: 3,
                         mainAxisSpacing: 16,
                         crossAxisSpacing: 12,
@@ -256,7 +271,7 @@ class _HomeShellState extends State<HomeShell> {
             child: CoreHealthBottomNav(
               currentIndex: controller.currentTab.clamp(0, 4),
               onTap: controller.selectTab,
-              onCoachTap: () => showCoachSheet(context, CoachType.wellness),
+              onCoachTap: () => _openAiChatPage(context),
               onMoreTap: () => _showMoreMenu(context),
             ),
           ),
@@ -825,8 +840,7 @@ class DashboardScreen extends StatelessWidget {
                     ),
                   );
                 },
-                onNotificationTap: () =>
-                    showCoachSheet(context, CoachType.wellness),
+                onNotificationTap: () => _openAiChatPage(context),
               ),
               const SizedBox(height: 22),
               _DashboardWeeklyCard(
@@ -881,7 +895,7 @@ class DashboardScreen extends StatelessWidget {
               _DashboardInsightPeek(
                 insight: primaryInsight,
                 loading: controller.insightsLoading,
-                onOpenCoach: () => showCoachSheet(context, CoachType.wellness),
+                onOpenCoach: () => _openAiChatPage(context),
               ),
               const SizedBox(height: 18),
               _DashboardCalendarCard(
@@ -1970,9 +1984,11 @@ class _LegacyDashboardScreen extends StatelessWidget {
                         const SizedBox(height: 12),
                         GradientActionButton(
                           label: 'Chat với AI',
-                          onPressed: () =>
-                              showCoachSheet(context, CoachType.wellness),
-                          colors: const [AppPalette.violet, Color(0xFFC58FFF)],
+                          onPressed: () => _openAiChatPage(context),
+                          colors: const [
+                            AppPalette.emerald,
+                            AppPalette.emeraldDeep
+                          ],
                           icon: const Icon(Icons.smart_toy_rounded),
                           height: 72,
                         ),
@@ -2007,11 +2023,10 @@ class _LegacyDashboardScreen extends StatelessWidget {
                         Expanded(
                           child: GradientActionButton(
                             label: 'Chat với AI',
-                            onPressed: () =>
-                                showCoachSheet(context, CoachType.wellness),
+                            onPressed: () => _openAiChatPage(context),
                             colors: const [
-                              AppPalette.violet,
-                              Color(0xFFC58FFF)
+                              AppPalette.emerald,
+                              AppPalette.emeraldDeep
                             ],
                             icon: const Icon(Icons.smart_toy_rounded),
                             height: 72,
@@ -2890,32 +2905,43 @@ class _MealPlanScreenState extends State<MealPlanScreen>
                     tooltip: 'Tạo lại bằng AI',
                     onPressed: () => controller.generateAiMealPlan(),
                   ),
-                SizedBox(
-                  width: isCompact ? 116 : 126,
-                  child: GradientActionButton(
-                    label: 'AI Coach',
-                    onPressed: () =>
-                        showCoachSheet(context, CoachType.nutrition),
-                    colors: const [AppPalette.orange, Color(0xFFFFA755)],
-                    icon: const Icon(Icons.auto_awesome_rounded),
-                  ),
-                ),
               ],
             ),
             const SizedBox(height: 12),
             Wrap(
               spacing: 10,
               runSpacing: 10,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                OutlinedButton.icon(
+                FilledButton.icon(
                   onPressed: () => _showFoodScanSheet(context),
-                  icon: const Icon(Icons.add_rounded, size: 18),
-                  label: const Text('Thêm thủ công'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppPalette.emerald,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 10),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                  icon: const Icon(Icons.camera_alt_rounded, size: 18),
+                  label: const Text(
+                    'Chụp ảnh scan',
+                    style: TextStyle(fontWeight: FontWeight.w700),
+                  ),
                 ),
                 OutlinedButton.icon(
                   onPressed: controller.isMealPlanGenerating
                       ? null
                       : () => controller.generateAiMealPlan(),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 10),
+                    side: const BorderSide(color: AppPalette.border),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
                   icon: const Icon(Icons.auto_awesome_rounded, size: 18),
                   label: const Text('Tạo thực đơn AI'),
                 ),
@@ -3676,15 +3702,6 @@ class _WorkoutPlanScreenState extends State<WorkoutPlanScreen>
                     tooltip: 'Tạo lại bằng AI',
                     onPressed: () => controller.generateAiWorkoutPlan(),
                   ),
-                SizedBox(
-                  width: isCompact ? 116 : 126,
-                  child: GradientActionButton(
-                    label: 'AI Coach',
-                    onPressed: () => showCoachSheet(context, CoachType.workout),
-                    colors: const [AppPalette.blue, Color(0xFF67A1FF)],
-                    icon: const Icon(Icons.auto_awesome_rounded),
-                  ),
-                ),
               ],
             ),
             const SizedBox(height: 12),
@@ -3703,11 +3720,6 @@ class _WorkoutPlanScreenState extends State<WorkoutPlanScreen>
                       : () => controller.generateAiWorkoutPlan(),
                   icon: const Icon(Icons.auto_awesome_rounded, size: 18),
                   label: const Text('Tạo lịch tập AI'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: () => showCoachSheet(context, CoachType.workout),
-                  icon: const Icon(Icons.chat_bubble_outline_rounded, size: 18),
-                  label: const Text('AI điều chỉnh'),
                 ),
               ],
             ),
@@ -5924,6 +5936,27 @@ class ProfileScreen extends StatelessWidget {
                             label: 'Đã dùng',
                             value: '${profile.tokenSpent} token',
                           ),
+                          const SizedBox(height: 16),
+                          OutlinedButton.icon(
+                            onPressed: () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute<void>(
+                                  builder: (_) => const TokenHistoryScreen(),
+                                ),
+                              );
+                            },
+                            icon: const Icon(Icons.receipt_long_rounded),
+                            label: const Text('Xem lịch sử nạp'),
+                            style: OutlinedButton.styleFrom(
+                              minimumSize: const Size.fromHeight(48),
+                              side: BorderSide(
+                                color: AppPalette.violet.withValues(alpha: 0.3),
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -5961,8 +5994,7 @@ class ProfileScreen extends StatelessWidget {
                                 icon: Icons.smart_toy_rounded,
                                 color: AppPalette.emerald,
                                 highlighted: true,
-                                onTap: () =>
-                                    showCoachSheet(context, CoachType.wellness),
+                                onTap: () => _openAiChatPage(context),
                               ),
                               const SizedBox(height: 12),
                               _ActionTile(
@@ -6015,8 +6047,7 @@ class ProfileScreen extends StatelessWidget {
                                       icon: Icons.smart_toy_rounded,
                                       color: AppPalette.emerald,
                                       highlighted: true,
-                                      onTap: () => showCoachSheet(
-                                          context, CoachType.wellness),
+                                      onTap: () => _openAiChatPage(context),
                                     ),
                                   ),
                                   const SizedBox(width: 12),
@@ -6250,6 +6281,10 @@ class ProfileScreen extends StatelessWidget {
                       ),
                     ),
                   ),
+                  const SizedBox(height: 18),
+                  _ReferralCodeCard(
+                    referralCode: profile.referralCode.trim(),
+                  ),
                 ],
               ),
             ),
@@ -6319,6 +6354,105 @@ class ProfileScreen extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+class _ReferralCodeCard extends StatelessWidget {
+  const _ReferralCodeCard({required this.referralCode});
+
+  final String referralCode;
+
+  @override
+  Widget build(BuildContext context) {
+    final tt = Theme.of(context).textTheme;
+    final hasCode = referralCode.isNotEmpty;
+
+    return AppCard(
+      padding: const EdgeInsets.fromLTRB(16, 15, 14, 15),
+      color: AppPalette.mint,
+      border: const BorderSide(color: AppPalette.emeraldSoft),
+      child: Row(
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: AppPalette.surface,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: AppPalette.borderLight),
+            ),
+            child: const Icon(
+              Icons.card_giftcard_rounded,
+              color: AppPalette.emeraldDeep,
+              size: 21,
+            ),
+          ),
+          const SizedBox(width: 13),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Mã giới thiệu',
+                  style: tt.labelMedium?.copyWith(
+                    color: AppPalette.mutedText,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                SelectableText(
+                  hasCode ? referralCode : 'Chưa có mã',
+                  maxLines: 1,
+                  style: tt.titleMedium?.copyWith(
+                    color: hasCode ? AppPalette.text : AppPalette.subtleText,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 0,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  hasCode
+                      ? 'Gửi mã này cho bạn bè khi họ đăng ký.'
+                      : 'Mã sẽ xuất hiện sau khi tài khoản được xác thực.',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: tt.bodySmall?.copyWith(color: AppPalette.mutedText),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          Tooltip(
+            message:
+                hasCode ? 'Sao chép mã giới thiệu' : 'Chưa có mã để sao chép',
+            child: IconButton.filledTonal(
+              onPressed:
+                  hasCode ? () => _copyCode(context, referralCode) : null,
+              style: IconButton.styleFrom(
+                fixedSize: const Size(44, 44),
+                backgroundColor:
+                    hasCode ? AppPalette.emeraldSoft : AppPalette.borderLight,
+                disabledBackgroundColor: AppPalette.borderLight,
+                foregroundColor: AppPalette.emeraldDeep,
+                disabledForegroundColor: AppPalette.subtleText,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
+              icon: const Icon(Icons.copy_rounded, size: 20),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static Future<void> _copyCode(BuildContext context, String code) async {
+    await Clipboard.setData(ClipboardData(text: code));
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Đã sao chép mã giới thiệu.')),
     );
   }
 }
@@ -7871,4 +8005,3 @@ class StandaloneProfileScreen extends StatelessWidget {
     );
   }
 }
-

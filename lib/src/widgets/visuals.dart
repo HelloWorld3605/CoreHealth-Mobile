@@ -401,12 +401,7 @@ class CoreHealthBottomNav extends StatelessWidget {
         tabIndex: 3,
         action: null
       ),
-      (
-        icon: Icons.person_rounded,
-        label: 'Tôi',
-        tabIndex: 4,
-        action: null
-      ),
+      (icon: Icons.person_rounded, label: 'Tôi', tabIndex: 4, action: null),
       (
         icon: Icons.more_horiz_rounded,
         label: 'Xem thêm',
@@ -452,7 +447,7 @@ class CoreHealthBottomNav extends StatelessWidget {
                   borderRadius: BorderRadius.circular(26),
                   border: Border.all(color: AppPalette.border),
                   boxShadow: const [
-                     BoxShadow(
+                    BoxShadow(
                       color: AppPalette.shadowHeavy,
                       blurRadius: 28,
                       offset: Offset(0, 10),
@@ -519,14 +514,14 @@ class CoreHealthBottomNav extends StatelessWidget {
                       height: coachSize,
                       decoration: BoxDecoration(
                         gradient: const LinearGradient(
-                          colors: [AppPalette.violet, Color(0xFFC58FFF)],
+                          colors: [AppPalette.emerald, AppPalette.emeraldDeep],
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
                         ),
                         shape: BoxShape.circle,
                         boxShadow: [
                           BoxShadow(
-                            color: AppPalette.violet.withValues(alpha: 0.38),
+                            color: AppPalette.emerald.withValues(alpha: 0.34),
                             blurRadius: 18,
                             offset: const Offset(0, 8),
                           ),
@@ -664,7 +659,7 @@ class FloatingAiMenu extends StatelessWidget {
         title: 'AI Assistant',
         subtitle: 'Tổng quát',
         icon: Icons.auto_awesome_rounded,
-        colors: [AppPalette.violet, Color(0xFFC58FFF)],
+        colors: [AppPalette.emerald, AppPalette.emeraldDeep],
       ),
     ];
 
@@ -948,7 +943,10 @@ class _CoachChatSheet extends StatefulWidget {
 
 class _CoachChatSheetState extends State<_CoachChatSheet> {
   final _textController = TextEditingController();
+  final _searchController = TextEditingController();
   final _scrollController = ScrollController();
+  bool _isInChatView = false;
+  String _selectedCategory = 'All';
 
   (String, String, List<Color>) get _config => switch (widget.type) {
         CoachType.nutrition => (
@@ -964,24 +962,22 @@ class _CoachChatSheetState extends State<_CoachChatSheet> {
         CoachType.wellness => (
             'AI Assistant',
             'Nhìn toàn cảnh tiến trình sức khỏe',
-            [AppPalette.violet, const Color(0xFFC58FFF)],
+            [AppPalette.emerald, AppPalette.emeraldDeep],
           ),
-      };
-
-  String get _greeting => switch (widget.type) {
-        CoachType.nutrition =>
-          'Xin chào! Tôi là AI Meal Coach. Bạn muốn tối ưu bữa ăn nào hôm nay?',
-        CoachType.workout =>
-          'Xin chào! Tôi là AI Workout Coach. Bạn muốn lên kế hoạch buổi tập hôm nay không?',
-        CoachType.wellness =>
-          'Xin chào! Tôi là AI Assistant sức khỏe. Tôi có thể giúp gì cho bạn hôm nay?',
       };
 
   AppController get _controller => CoreHealthScope.of(widget.parentContext);
 
   @override
+  void initState() {
+    super.initState();
+    _isInChatView = _controller.chatSessions.isEmpty;
+  }
+
+  @override
   void dispose() {
     _textController.dispose();
+    _searchController.dispose();
     _scrollController.dispose();
     super.dispose();
   }
@@ -998,11 +994,11 @@ class _CoachChatSheetState extends State<_CoachChatSheet> {
     });
   }
 
-  Future<void> _send() async {
+  Future<void> _sendSessionChat() async {
     final text = _textController.text.trim();
     if (text.isEmpty) return;
     _textController.clear();
-    await _controller.sendChatMessage(widget.type, text);
+    await _controller.sendSessionChatMessage(text);
     _scrollToBottom();
   }
 
@@ -1093,181 +1089,576 @@ class _CoachChatSheetState extends State<_CoachChatSheet> {
     return ListenableBuilder(
       listenable: _controller,
       builder: (context, _) {
-        final history = _controller.chatHistory(widget.type);
-        final loading = _controller.isChatLoading(widget.type);
+        final sessions = _controller.chatSessions;
+        final activeSession = _controller.activeChatSession;
+        final loading = _controller.isWellnessChatLoading;
 
-        if (history.isNotEmpty) _scrollToBottom();
+        if (_isInChatView &&
+            activeSession != null &&
+            activeSession.history.isNotEmpty) {
+          _scrollToBottom();
+        }
 
         return Padding(
           padding: EdgeInsets.fromLTRB(16, 0, 16, 22 + bottomInset),
           child: AppCard(
             radius: 34,
             padding: EdgeInsets.zero,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Header
-                Container(
-                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(colors: config.$3),
-                    borderRadius:
-                        const BorderRadius.vertical(top: Radius.circular(34)),
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              config.$1,
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .titleLarge
-                                  ?.copyWith(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              config.$2,
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .bodySmall
-                                  ?.copyWith(
-                                    color: Colors.white.withValues(alpha: 0.9),
-                                  ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      if (history.isNotEmpty)
-                        IconButton(
-                          icon: const Icon(Icons.delete_outline_rounded,
-                              color: Colors.white70),
-                          tooltip: 'Xoá lịch sử',
-                          onPressed: () =>
-                              _controller.clearChatHistory(widget.type),
-                        ),
-                      IconButton(
-                        icon: const Icon(Icons.close_rounded,
-                            color: Colors.white),
-                        onPressed: () => Navigator.of(context).pop(),
-                      ),
-                    ],
-                  ),
-                ),
-                // Chat area — clamp between 240 and 400 based on screen height
-                SizedBox(
-                  height: (MediaQuery.of(context).size.height * 0.42)
-                      .clamp(240.0, 400.0),
-                  child: history.isEmpty
-                      ? Center(
-                          child: Padding(
-                            padding: const EdgeInsets.all(24),
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.all(16),
-                                  decoration: BoxDecoration(
-                                    gradient: LinearGradient(colors: config.$3),
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: const Icon(Icons.smart_toy_rounded,
-                                      color: Colors.white, size: 32),
-                                ),
-                                const SizedBox(height: 16),
-                                Text(
-                                  _greeting,
-                                  textAlign: TextAlign.center,
-                                  style: Theme.of(context).textTheme.bodyLarge,
-                                ),
-                              ],
-                            ),
-                          ),
-                        )
-                      : ListView.builder(
-                          controller: _scrollController,
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 16, vertical: 12),
-                          itemCount: history.length + (loading ? 1 : 0),
-                          itemBuilder: (context, index) {
-                            if (index == history.length) {
-                              return _TypingIndicator(colors: config.$3);
-                            }
-                            final msg = history[index];
-                            return _ChatBubble(
-                              message: msg,
-                              colors: config.$3,
-                            );
-                          },
-                        ),
-                ),
-                // Input
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  decoration: BoxDecoration(
-                    border: Border(
-                      top: BorderSide(
-                        color: Colors.grey.withValues(alpha: 0.15),
-                      ),
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: _textController,
-                          decoration: InputDecoration(
-                            hintText: 'Nhắn tin cho AI...',
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(24),
-                              borderSide: BorderSide.none,
-                            ),
-                            filled: true,
-                            fillColor: AppPalette.surfaceElevated,
-                            contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 16, vertical: 10),
-                          ),
-                          textInputAction: TextInputAction.send,
-                          onSubmitted: (_) => _send(),
-                          enabled: !loading,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      GestureDetector(
-                        onTap: loading ? null : _send,
-                        child: Container(
-                          width: 44,
-                          height: 44,
-                          decoration: BoxDecoration(
-                            gradient: loading
-                                ? null
-                                : LinearGradient(colors: config.$3),
-                            color: loading ? AppPalette.border : null,
-                            shape: BoxShape.circle,
-                          ),
-                          child: Icon(
-                            loading
-                                ? Icons.hourglass_empty_rounded
-                                : Icons.send_rounded,
-                            color: Colors.white,
-                            size: 20,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+            child: SizedBox(
+              height: (MediaQuery.of(context).size.height * 0.65)
+                  .clamp(380.0, 580.0),
+              child: _isInChatView
+                  ? _buildChatView(context, activeSession, loading, config)
+                  : _buildHistoryView(context, sessions, config),
             ),
           ),
         );
       },
+    );
+  }
+
+  Widget _buildHistoryView(
+    BuildContext context,
+    List<ChatSession> sessions,
+    (String, String, List<Color>) config,
+  ) {
+    final filteredSessions = sessions.where((s) {
+      final query = _searchController.text.trim().toLowerCase();
+      final matchesSearch = query.isEmpty ||
+          s.title.toLowerCase().contains(query) ||
+          s.history.any((m) => m.text.toLowerCase().contains(query));
+
+      final matchesCategory =
+          _selectedCategory == 'All' || s.category == _selectedCategory;
+
+      return matchesSearch && matchesCategory;
+    }).toList();
+
+    final categoriesList = ['All', 'Workout', 'Nutrition', 'Form', 'General'];
+    final categoryLabels = {
+      'All': 'Tất cả',
+      'Workout': 'Tập luyện',
+      'Nutrition': 'Dinh dưỡng',
+      'Form': 'Tư thế',
+      'General': 'Chung',
+    };
+
+    final badgeConfig = {
+      'Workout': (AppPalette.blueSoft, AppPalette.blue, 'Tập luyện'),
+      'Nutrition': (AppPalette.orangeSoft, AppPalette.orange, 'Dinh dưỡng'),
+      'Form': (AppPalette.emeraldSoft, AppPalette.emeraldDeep, 'Tư thế'),
+      'General': (AppPalette.mint, AppPalette.emeraldDeep, 'Chung'),
+    };
+
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(colors: config.$3),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(34)),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'AI Coach History',
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w800,
+                          ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Lịch sử trò chuyện với AI',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: Colors.white.withValues(alpha: 0.9),
+                          ),
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.close_rounded, color: Colors.white),
+                onPressed: () => Navigator.of(context).pop(),
+              ),
+            ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+          child: Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _searchController,
+                  onChanged: (_) => setState(() {}),
+                  decoration: InputDecoration(
+                    hintText: 'Tìm kiếm cuộc hội thoại...',
+                    prefixIcon: const Icon(Icons.search_rounded, size: 18),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: BorderSide.none,
+                    ),
+                    filled: true,
+                    fillColor: AppPalette.surfaceElevated,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              FilledButton.icon(
+                onPressed: () {
+                  _controller.startNewChatSession();
+                  setState(() {
+                    _isInChatView = true;
+                  });
+                },
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size(0, 48),
+                  backgroundColor: config.$3.first,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                ),
+                icon: const Icon(Icons.add_rounded, size: 18),
+                label: const Text('Mới',
+                    style: TextStyle(fontWeight: FontWeight.bold)),
+              ),
+            ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: SizedBox(
+            height: 38,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              itemCount: categoriesList.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 8),
+              itemBuilder: (context, idx) {
+                final cat = categoriesList[idx];
+                final isSelected = _selectedCategory == cat;
+                return GestureDetector(
+                  onTap: () {
+                    setState(() {
+                      _selectedCategory = cat;
+                    });
+                  },
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 150),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: isSelected
+                          ? config.$3.first
+                          : AppPalette.surfaceElevated,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color:
+                            isSelected ? Colors.transparent : AppPalette.border,
+                      ),
+                      boxShadow: isSelected
+                          ? [
+                              BoxShadow(
+                                color: config.$3.first.withValues(alpha: 0.25),
+                                blurRadius: 6,
+                                offset: const Offset(0, 2),
+                              )
+                            ]
+                          : null,
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      categoryLabels[cat]!,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight:
+                            isSelected ? FontWeight.w800 : FontWeight.w600,
+                        color: isSelected ? Colors.white : AppPalette.mutedText,
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+        Expanded(
+          child: filteredSessions.isEmpty
+              ? Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.chat_bubble_outline_rounded,
+                          color: Colors.grey.withValues(alpha: 0.3), size: 48),
+                      const SizedBox(height: 12),
+                      const Text(
+                        'Chưa có cuộc trò chuyện nào',
+                        style: TextStyle(color: AppPalette.mutedText),
+                      ),
+                    ],
+                  ),
+                )
+              : ListView.builder(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                  itemCount: filteredSessions.length,
+                  itemBuilder: (context, index) {
+                    final session = filteredSessions[index];
+                    final date =
+                        DateTime.fromMillisecondsSinceEpoch(session.ts);
+                    final dateStr =
+                        '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}';
+                    final lastMsg = session.history.isNotEmpty
+                        ? session.history.last.text
+                        : 'Cuộc trò chuyện mới';
+
+                    final bConfig = badgeConfig[session.category] ??
+                        badgeConfig['General']!;
+
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      color: AppPalette.surfaceElevated,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        side: const BorderSide(color: AppPalette.border),
+                      ),
+                      clipBehavior: Clip.antiAlias,
+                      child: InkWell(
+                        onTap: () {
+                          _controller.selectChatSession(session.id);
+                          setState(() {
+                            _isInChatView = true;
+                          });
+                        },
+                        child: Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: config.$3.first.withValues(alpha: 0.1),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Icon(Icons.forum_rounded,
+                                    color: config.$3.first, size: 18),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: Row(
+                                            children: [
+                                              Flexible(
+                                                child: Text(
+                                                  session.title,
+                                                  style: const TextStyle(
+                                                      fontWeight:
+                                                          FontWeight.w800,
+                                                      fontSize: 14),
+                                                  maxLines: 1,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                ),
+                                              ),
+                                              const SizedBox(width: 6),
+                                              Container(
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                        horizontal: 6,
+                                                        vertical: 2),
+                                                decoration: BoxDecoration(
+                                                  color: bConfig.$1,
+                                                  borderRadius:
+                                                      BorderRadius.circular(6),
+                                                ),
+                                                child: Text(
+                                                  bConfig.$3,
+                                                  style: TextStyle(
+                                                    color: bConfig.$2,
+                                                    fontSize: 9,
+                                                    fontWeight: FontWeight.w800,
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        const SizedBox(width: 6),
+                                        Text(
+                                          dateStr,
+                                          style: const TextStyle(
+                                              color: AppPalette.mutedText,
+                                              fontSize: 11),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      lastMsg,
+                                      style: const TextStyle(
+                                          color: AppPalette.mutedText,
+                                          fontSize: 12),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              IconButton(
+                                icon: const Icon(Icons.delete_outline_rounded,
+                                    color: Colors.redAccent, size: 20),
+                                onPressed: () {
+                                  _controller.deleteChatSession(session.id);
+                                },
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildChatView(
+    BuildContext context,
+    ChatSession? session,
+    bool loading,
+    (String, String, List<Color>) config,
+  ) {
+    final history = session?.history ?? const <ChatMessage>[];
+
+    final suggestions = [
+      'Tôi nên ăn gì trước khi tập?',
+      'Lịch tập cho người mới bắt đầu?',
+      'Cách cải thiện giấc ngủ hiệu quả?',
+      'Cách tính calo tiêu thụ hàng ngày?'
+    ];
+
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.fromLTRB(10, 16, 20, 12),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(colors: config.$3),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(34)),
+          ),
+          child: Row(
+            children: [
+              IconButton(
+                icon: const Icon(Icons.arrow_back_ios_rounded,
+                    color: Colors.white, size: 20),
+                onPressed: () {
+                  setState(() {
+                    _isInChatView = false;
+                  });
+                },
+              ),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      session?.title ?? 'Cuộc trò chuyện mới',
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 16,
+                          ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'AI Coach • Online & Monitoring',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: Colors.white.withValues(alpha: 0.9),
+                            fontSize: 11,
+                          ),
+                    ),
+                  ],
+                ),
+              ),
+              if (session != null)
+                IconButton(
+                  icon: const Icon(Icons.delete_outline_rounded,
+                      color: Colors.white70),
+                  tooltip: 'Xoá lịch sử',
+                  onPressed: () {
+                    _controller.deleteChatSession(session.id);
+                    setState(() {
+                      _isInChatView = false;
+                    });
+                  },
+                ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: history.isEmpty
+              ? Center(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(colors: config.$3),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.smart_toy_rounded,
+                              color: Colors.white, size: 32),
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          'Xin chào! Tôi là AI Coach của bạn.',
+                          textAlign: TextAlign.center,
+                          style: Theme.of(context)
+                              .textTheme
+                              .titleMedium
+                              ?.copyWith(fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 8),
+                        const Text(
+                          'Hỏi tôi bất cứ điều gì về chế độ ăn uống, bài tập thể hình hoặc thói quen sống lành mạnh.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                              color: AppPalette.mutedText, fontSize: 13),
+                        ),
+                        const SizedBox(height: 20),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          alignment: WrapAlignment.center,
+                          children: suggestions
+                              .map((s) => ActionChip(
+                                    label: Text(s,
+                                        style: const TextStyle(fontSize: 11)),
+                                    backgroundColor: AppPalette.surfaceElevated,
+                                    onPressed: () {
+                                      _textController.text = s;
+                                    },
+                                  ))
+                              .toList(),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              : ListView.builder(
+                  controller: _scrollController,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  itemCount: history.length + (loading ? 1 : 0),
+                  itemBuilder: (context, index) {
+                    if (index == history.length) {
+                      return _TypingIndicator(colors: config.$3);
+                    }
+                    final msg = history[index];
+                    return _ChatBubble(
+                      message: msg,
+                      colors: config.$3,
+                    );
+                  },
+                ),
+        ),
+        if (history.isNotEmpty && !loading)
+          Container(
+            height: 36,
+            margin: const EdgeInsets.only(bottom: 4),
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              children: suggestions
+                  .map((s) => Padding(
+                        padding: const EdgeInsets.only(right: 8),
+                        child: ActionChip(
+                          label: Text(s, style: const TextStyle(fontSize: 11)),
+                          backgroundColor: AppPalette.surfaceElevated,
+                          padding: EdgeInsets.zero,
+                          onPressed: () {
+                            _textController.text = s;
+                          },
+                        ),
+                      ))
+                  .toList(),
+            ),
+          ),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          decoration: BoxDecoration(
+            border: Border(
+              top: BorderSide(
+                color: Colors.grey.withValues(alpha: 0.15),
+              ),
+            ),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _textController,
+                  decoration: InputDecoration(
+                    hintText: 'Nhắn tin cho AI Coach...',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(24),
+                      borderSide: BorderSide.none,
+                    ),
+                    filled: true,
+                    fillColor: AppPalette.surfaceElevated,
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 10),
+                  ),
+                  textInputAction: TextInputAction.send,
+                  onSubmitted: (_) => _sendSessionChat(),
+                  enabled: !loading,
+                ),
+              ),
+              const SizedBox(width: 8),
+              GestureDetector(
+                onTap: loading ? null : _sendSessionChat,
+                child: Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    gradient:
+                        loading ? null : LinearGradient(colors: config.$3),
+                    color: loading ? AppPalette.border : null,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    loading
+                        ? Icons.hourglass_empty_rounded
+                        : Icons.send_rounded,
+                    color: Colors.white,
+                    size: 20,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
@@ -1417,7 +1808,6 @@ class _CoachAction {
   final List<Color> colors;
 }
 
-
 /// A reusable selector field that opens a bottom sheet with options.
 /// Matches the app's input field style (borderRadius 22, surfaceElevated).
 class CoreHealthSelector<T> extends StatelessWidget {
@@ -1445,7 +1835,8 @@ class CoreHealthSelector<T> extends StatelessWidget {
       child: InputDecorator(
         decoration: InputDecoration(
           labelText: label,
-          prefixIcon: icon != null ? Icon(icon, color: AppPalette.emerald) : null,
+          prefixIcon:
+              icon != null ? Icon(icon, color: AppPalette.emerald) : null,
           suffixIcon: const Icon(Icons.keyboard_arrow_down_rounded,
               color: AppPalette.mutedText),
           filled: true,
@@ -1559,8 +1950,7 @@ class CoreHealthSelector<T> extends StatelessWidget {
                   },
                 );
               }),
-              SizedBox(
-                  height: MediaQuery.of(context).padding.bottom + 12),
+              SizedBox(height: MediaQuery.of(context).padding.bottom + 12),
             ],
           ),
         );
@@ -1569,10 +1959,10 @@ class CoreHealthSelector<T> extends StatelessWidget {
   }
 }
 
-
 /// Shows a centered translucent toast with a check icon and "Đã thêm vào giỏ" text.
 /// Auto-dismisses after [duration].
-void showCartAddedOverlay(BuildContext context, {Duration duration = const Duration(milliseconds: 1500)}) {
+void showCartAddedOverlay(BuildContext context,
+    {Duration duration = const Duration(milliseconds: 1500)}) {
   final overlay = Overlay.of(context);
   late final OverlayEntry entry;
 
@@ -1662,7 +2052,6 @@ class _CartAddedToastState extends State<_CartAddedToast>
     );
   }
 }
-
 
 /// Unified icon button used across all screens for back, cart, etc.
 /// Consistent 44x44 rounded container with surface background and shadow.

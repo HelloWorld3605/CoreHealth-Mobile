@@ -4,7 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import 'src/app_controller.dart';
-import 'src/data/local_app_repository.dart';
+import 'src/data/app_repository.dart';
 import 'src/data/postgres_app_repository.dart';
 import 'src/data/remote_app_repository.dart';
 import 'src/models.dart';
@@ -19,14 +19,12 @@ import 'src/theme.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   const apiBaseUrl = String.fromEnvironment('COREHEALTH_API_BASE_URL');
-  const postgresEnabled =
-      bool.fromEnvironment('COREHEALTH_POSTGRES_ENABLED', defaultValue: true);
   final AppRepository repository;
   if (apiBaseUrl.isNotEmpty) {
     final remote = RemoteAppRepository(baseUrl: apiBaseUrl);
     await remote.init();
     repository = remote;
-  } else if (postgresEnabled) {
+  } else {
     const configuredHost = String.fromEnvironment('COREHEALTH_POSTGRES_HOST');
     final host = configuredHost.isNotEmpty
         ? configuredHost
@@ -41,10 +39,7 @@ void main() async {
       'COREHEALTH_POSTGRES_USER',
       defaultValue: 'postgres',
     );
-    const password = String.fromEnvironment(
-      'COREHEALTH_POSTGRES_PASSWORD',
-      defaultValue: '123456',
-    );
+    const password = String.fromEnvironment('COREHEALTH_POSTGRES_PASSWORD');
     const port = int.fromEnvironment(
       'COREHEALTH_POSTGRES_PORT',
       defaultValue: 5432,
@@ -58,8 +53,6 @@ void main() async {
     );
     await postgres.init();
     repository = postgres;
-  } else {
-    repository = LocalAppRepository();
   }
   final controller = AppController(repository: repository);
   unawaited(controller.initialize());

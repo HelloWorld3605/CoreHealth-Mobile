@@ -4,7 +4,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 
 import '../models.dart';
-import 'local_app_repository.dart';
+import 'app_repository.dart';
 
 class RemoteAppRepository implements AppRepository {
   RemoteAppRepository({required String baseUrl, http.Client? client})
@@ -95,6 +95,41 @@ class RemoteAppRepository implements AppRepository {
   }
 
   @override
+  Future<RegisterResponseData> requestPasswordReset({
+    required String email,
+  }) async {
+    final json = await _request(
+      'POST',
+      '/auth/forgot-password',
+      {'email': email},
+      false,
+    );
+    return RegisterResponseData(
+      success: json['sent'] as bool? ?? json['success'] as bool? ?? true,
+      email: json['email'] as String? ?? email,
+      devOtp: json['devOtp'] as String?,
+    );
+  }
+
+  @override
+  Future<void> resetPassword({
+    required String email,
+    required String otp,
+    required String newPassword,
+  }) async {
+    await _request(
+      'POST',
+      '/auth/reset-password',
+      {
+        'email': email,
+        'otp': otp,
+        'newPassword': newPassword,
+      },
+      false,
+    );
+  }
+
+  @override
   Future<AuthResult> signInWithGoogle({required String idToken}) {
     return _auth('/auth/google', {'credential': idToken});
   }
@@ -145,6 +180,46 @@ class RemoteAppRepository implements AppRepository {
     }
   }
 
+  @override
+  Future<PersistedUserData> updateUserSettings({
+    required String userId,
+    required UserSettings settings,
+  }) async {
+    try {
+      final json = await _request('POST', '/me/settings', {
+        'settings': _settingsToJson(settings),
+      });
+      return _userData(json).copyWith(settings: settings);
+    } on AppAuthException {
+      final bootstrap = await this.bootstrap();
+      final userData = bootstrap.userData;
+      if (userData == null) rethrow;
+      return userData.copyWith(settings: settings);
+    }
+  }
+
+  @override
+  Future<List<TokenTransaction>> getTokenTransactions({
+    required String userId,
+  }) async {
+    final data = await _request('GET', '/me/token-transactions');
+    return _list(data).map(_tokenTransaction).toList(growable: false);
+  }
+
+  @override
+  Future<void> addTokenTransaction({
+    required String userId,
+    required TokenTransaction transaction,
+  }) async {
+    await _request('POST', '/me/token-transactions', {
+      'id': transaction.id,
+      'amount': transaction.amount,
+      'priceK': transaction.priceK,
+      'description': transaction.description,
+      'createdAt': transaction.createdAt.toIso8601String(),
+    });
+  }
+
   Future<PersistedUserData> purchaseTokenPack({
     required TokenPack pack,
   }) async {
@@ -182,16 +257,11 @@ class RemoteAppRepository implements AppRepository {
         orders: const [],
       );
     }
-    return PersistedUserData(
+    return current.copyWith(
       profile: current.profile.copyWith(
         tokenBalance: walletBalance,
         tokenEarned: current.profile.tokenEarned + pack.tokens,
       ),
-      weightHistory: current.weightHistory,
-      completedWorkoutDays: current.completedWorkoutDays,
-      completedMealDays: current.completedMealDays,
-      cart: current.cart,
-      orders: current.orders,
     );
   }
 
@@ -305,6 +375,23 @@ class RemoteAppRepository implements AppRepository {
     await _storage.delete(key: _tokenKey);
   }
 
+  @override
+  Future<List<ChatSession>> getChatSessions({required String userId}) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<void> saveChatSession(
+      {required String userId, required ChatSession session}) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<void> deleteChatSession(
+      {required String userId, required String sessionId}) {
+    throw UnimplementedError();
+  }
+
   Future<AuthResult> _auth(String path, Map<String, Object?> body) async {
     final json = await _request('POST', path, body, false);
     _token = json['token'] as String?;
@@ -367,8 +454,27 @@ class RemoteAppRepository implements AppRepository {
           .toSet(),
       cart: _list(json['cart']).map(_product).toList(),
       orders: _list(json['orders']).map(_order).toList(),
+      settings: _settings(json['settings']),
     );
   }
+
+  UserSettings _settings(Object? value) {
+    if (value is! Map<String, dynamic>) return const UserSettings();
+    return UserSettings(
+      waterReminderEnabled: value['waterReminderEnabled'] as bool? ?? true,
+      workoutReminderEnabled: value['workoutReminderEnabled'] as bool? ?? true,
+      weeklyWeightReminderEnabled:
+          value['weeklyWeightReminderEnabled'] as bool? ?? false,
+      language: value['language'] as String? ?? 'Tiếng Việt',
+    );
+  }
+
+  Map<String, Object?> _settingsToJson(UserSettings settings) => {
+        'waterReminderEnabled': settings.waterReminderEnabled,
+        'workoutReminderEnabled': settings.workoutReminderEnabled,
+        'weeklyWeightReminderEnabled': settings.weeklyWeightReminderEnabled,
+        'language': settings.language,
+      };
 
   DemoProfile _profile(Map<String, dynamic> json) {
     final walletTokens = _readInt(json, 'walletTokens',
@@ -496,6 +602,20 @@ class RemoteAppRepository implements AppRepository {
       fat: (json['fat'] as num?)?.toDouble() ?? 0,
       loggedAt:
           DateTime.tryParse(json['loggedAt'].toString()) ?? DateTime.now(),
+    );
+  }
+
+  TokenTransaction _tokenTransaction(dynamic item) {
+    final json = item as Map<String, dynamic>;
+    return TokenTransaction(
+      id: json['id'] as String? ?? '',
+      amount: (json['amount'] as num?)?.toInt() ?? 0,
+      priceK: _readInt(json, 'priceK', _readInt(json, 'price_k', 0)),
+      description: json['description'] as String? ?? '',
+      createdAt: DateTime.tryParse(
+            (json['createdAt'] ?? json['created_at'] ?? '').toString(),
+          ) ??
+          DateTime.now(),
     );
   }
 

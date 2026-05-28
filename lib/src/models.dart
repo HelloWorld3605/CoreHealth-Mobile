@@ -14,6 +14,36 @@ enum Gender { female, male, other }
 
 enum CoachType { nutrition, workout, wellness }
 
+class UserSettings {
+  const UserSettings({
+    this.waterReminderEnabled = true,
+    this.workoutReminderEnabled = true,
+    this.weeklyWeightReminderEnabled = false,
+    this.language = 'Tiếng Việt',
+  });
+
+  final bool waterReminderEnabled;
+  final bool workoutReminderEnabled;
+  final bool weeklyWeightReminderEnabled;
+  final String language;
+
+  UserSettings copyWith({
+    bool? waterReminderEnabled,
+    bool? workoutReminderEnabled,
+    bool? weeklyWeightReminderEnabled,
+    String? language,
+  }) {
+    return UserSettings(
+      waterReminderEnabled: waterReminderEnabled ?? this.waterReminderEnabled,
+      workoutReminderEnabled:
+          workoutReminderEnabled ?? this.workoutReminderEnabled,
+      weeklyWeightReminderEnabled:
+          weeklyWeightReminderEnabled ?? this.weeklyWeightReminderEnabled,
+      language: language ?? this.language,
+    );
+  }
+}
+
 class AppUserSession {
   const AppUserSession({
     required this.userId,
@@ -289,6 +319,24 @@ class TokenPack {
   int get pricePerToken => (priceK * 1000 / tokens).round();
 }
 
+class TokenTransaction {
+  const TokenTransaction({
+    required this.id,
+    required this.amount,
+    required this.priceK,
+    required this.description,
+    required this.createdAt,
+  });
+
+  final String id;
+  final int amount;
+  final int priceK;
+  final String description;
+  final DateTime createdAt;
+
+  bool get isCredit => amount >= 0;
+}
+
 class TokenCosts {
   const TokenCosts._();
 
@@ -416,6 +464,49 @@ class ChatMessage {
 
   final String text;
   final bool isUser;
+}
+
+class ChatSession {
+  ChatSession({
+    required this.id,
+    required this.title,
+    required this.history,
+    required this.ts,
+    this.category = 'General',
+  });
+
+  final String id;
+  final String title;
+  final List<ChatMessage> history;
+  final int ts;
+  final String category;
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'title': title,
+        'history':
+            history.map((m) => {'text': m.text, 'isUser': m.isUser}).toList(),
+        'ts': ts,
+        'category': category,
+      };
+
+  factory ChatSession.fromJson(Map<String, dynamic> json) {
+    final list = json['history'] as List? ?? [];
+    final historyList = list.map((item) {
+      final map = item as Map<String, dynamic>;
+      return ChatMessage(
+        text: map['text'] as String? ?? '',
+        isUser: map['isUser'] as bool? ?? false,
+      );
+    }).toList();
+    return ChatSession(
+      id: json['id'] as String? ?? '',
+      title: json['title'] as String? ?? 'Cuộc trò chuyện mới',
+      history: historyList,
+      ts: json['ts'] as int? ?? DateTime.now().millisecondsSinceEpoch,
+      category: json['category'] as String? ?? 'General',
+    );
+  }
 }
 
 class MealItem {
@@ -631,3 +722,84 @@ class RegisterResponseData {
   final String? devOtp;
 }
 
+// ---------------------------------------------------------------------------
+// Shipping & delivery
+// ---------------------------------------------------------------------------
+
+class ShippingAddress {
+  final String name;
+  final String phone;
+  final String address;
+  final int provinceId;
+  final int districtId;
+  final String wardCode;
+  final String? provinceName;
+  final String? districtName;
+  final String? wardName;
+
+  const ShippingAddress({
+    required this.name,
+    required this.phone,
+    required this.address,
+    required this.provinceId,
+    required this.districtId,
+    required this.wardCode,
+    this.provinceName,
+    this.districtName,
+    this.wardName,
+  });
+
+  String get fullAddress {
+    final parts = <String>[address];
+    if (wardName != null) parts.add(wardName!);
+    if (districtName != null) parts.add(districtName!);
+    if (provinceName != null) parts.add(provinceName!);
+    return parts.join(', ');
+  }
+}
+
+class GhnOrderDetail {
+  final String orderCode;
+  final String status;
+  final String statusLabel;
+  final String toName;
+  final String toPhone;
+  final String toAddress;
+  final int codAmount;
+  final int weight;
+  final String? leadtime;
+  final String? orderDate;
+  final String? finishDate;
+
+  const GhnOrderDetail({
+    required this.orderCode,
+    required this.status,
+    required this.statusLabel,
+    required this.toName,
+    required this.toPhone,
+    required this.toAddress,
+    required this.codAmount,
+    required this.weight,
+    this.leadtime,
+    this.orderDate,
+    this.finishDate,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Exercise videos
+// ---------------------------------------------------------------------------
+
+class ExerciseVideo {
+  final String? videoUrl;
+  final String? thumbnailUrl;
+  final String? videoHlsUrl;
+
+  const ExerciseVideo({
+    this.videoUrl,
+    this.thumbnailUrl,
+    this.videoHlsUrl,
+  });
+
+  bool get hasVideo => videoUrl != null && videoUrl!.isNotEmpty;
+}

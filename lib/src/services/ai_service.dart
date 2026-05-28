@@ -5,16 +5,22 @@ import 'package:http/http.dart' as http;
 
 import '../demo_data.dart';
 import '../models.dart';
+import 'gemini_service.dart';
 import 'rag_service.dart';
 
 class AiService {
-  // Build: flutter run --dart-define=BEEKNOEE_API_KEY=sk-bee-xxxxx
-  static const _apiKey = String.fromEnvironment(
-    'BEEKNOEE_API_KEY',
-    defaultValue: '',
-  );
-  static const _baseUrl = 'https://platform.beeknoee.com';
-  static const _model = 'openai/gpt-oss-120b';
+  // API keys are injected at build time via --dart-define (see .env file)
+  static const _groqApiKey = String.fromEnvironment('GROQ_API_KEY');
+  static const _groqBaseUrl = 'https://api.groq.com/openai';
+  static const _groqModel = 'llama-3.3-70b-versatile';
+
+  static const _beeknoeeApiKey = String.fromEnvironment('BEEKNOEE_API_KEY');
+  static const _beeknoeeBaseUrl = 'https://platform.beeknoee.com';
+  static const _beeknoeeModel = 'qwen-3-235b-a22b-instruct-2507';
+
+  static const _goLlmApiKey = String.fromEnvironment('GOLLM_API_KEY');
+  static const _goLlmBaseUrl = 'https://api.gollm.cloud';
+  static const _goLlmModel = 'gpt-4.1';
 
   // Cycle qua các ảnh có sẵn cho bữa ăn AI-generated
   static const _mealImages = [
@@ -31,9 +37,253 @@ class AiService {
   final Map<String, List<MealPlanDay>> _mealPlanCache = {};
   final Map<String, List<WorkoutDay>> _workoutPlanCache = {};
 
+  final _gemini = GeminiService();
   final _rag = RagService();
 
-  bool get hasApiKey => _apiKey.isNotEmpty;
+  bool get hasApiKey =>
+      _groqApiKey.isNotEmpty ||
+      _beeknoeeApiKey.isNotEmpty ||
+      _goLlmApiKey.isNotEmpty ||
+      _gemini.isAvailable;
+
+  /// Helper for calling Open AI compatible chat completions endpoints.
+  Future<String> _invokeOpenAiCompatible({
+    required String baseUrl,
+    required String apiKey,
+    required String model,
+    required List<Map<String, String>> messages,
+    required int maxTokens,
+    required bool useSlashCompletions,
+  }) async {
+    final path = useSlashCompletions ? '/v1/chat/completions' : '/chat/completions';
+    final url = Uri.parse('$baseUrl$path');
+
+    final body = {
+      'model': model,
+      'messages': messages,
+      'max_tokens': maxTokens,
+    };
+
+    final headers = {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer $apiKey',
+      'User-Agent': 'CoreHealth/1.0',
+    };
+
+    final response = await http.post(
+      url,
+      headers: headers,
+      body: jsonEncode(body),
+    ).timeout(const Duration(seconds: 30));
+
+    if (response.statusCode == 429) {
+      throw const _RateLimitException();
+    }
+    if (response.statusCode != 200) {
+      throw Exception('HTTP ${response.statusCode}: ${response.body}');
+    }
+
+    final data = jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+    final choices = data['choices'] as List?;
+    if (choices == null || choices.isEmpty) {
+      return '';
+    }
+    final message = choices.first['message'] as Map<String, dynamic>?;
+    if (message == null) {
+      return '';
+    }
+    final text = message['content'] as String? ?? '';
+    return text.trim();
+  }
+
+  /// AI Chat Completions with standard fallback logic: Groq -> Beeknoee -> GoLLM
+  Future<String> _callChatCompletions({
+    required String system,
+    required String prompt,
+    required int maxTokens,
+    List<Map<String, String>>? historyMessages,
+  }) async {
+    // 1. Primary: Groq
+    if (_groqApiKey.isNotEmpty) {
+      try {
+        final messages = <Map<String, String>>[];
+        messages.add({'role': 'system', 'content': system});
+        if (historyMessages != null) {
+          messages.addAll(historyMessages);
+        }
+        messages.add({'role': 'user', 'content': prompt});
+
+        final text = await _invokeOpenAiCompatible(
+          baseUrl: _groqBaseUrl,
+          apiKey: _groqApiKey,
+          model: _groqModel,
+          messages: messages,
+          maxTokens: maxTokens,
+          useSlashCompletions: true,
+        );
+        if (text.isNotEmpty) return text;
+      } catch (e) {
+        debugPrint('[CoreHealth AI] Groq completions failed: $e. Trying Beeknoee...');
+      }
+    }
+
+    // 2. Fallback 1: Beeknoee
+    if (_beeknoeeApiKey.isNotEmpty) {
+      try {
+        final messages = <Map<String, String>>[];
+        messages.add({'role': 'system', 'content': system});
+        if (historyMessages != null) {
+          messages.addAll(historyMessages);
+        }
+        messages.add({'role': 'user', 'content': prompt});
+
+        final text = await _invokeOpenAiCompatible(
+          baseUrl: _beeknoeeBaseUrl,
+          apiKey: _beeknoeeApiKey,
+          model: _beeknoeeModel,
+          messages: messages,
+          maxTokens: maxTokens,
+          useSlashCompletions: true,
+        );
+        if (text.isNotEmpty) return text;
+      } catch (e) {
+        debugPrint('[CoreHealth AI] Beeknoee completions failed: $e. Trying GoLLM...');
+      }
+    }
+
+    // 3. Fallback 2: GoLLM
+    if (_goLlmApiKey.isNotEmpty) {
+      try {
+        final messages = <Map<String, String>>[];
+        messages.add({'role': 'system', 'content': system});
+        if (historyMessages != null) {
+          messages.addAll(historyMessages);
+        }
+        messages.add({'role': 'user', 'content': prompt});
+
+        final text = await _invokeOpenAiCompatible(
+          baseUrl: _goLlmBaseUrl,
+          apiKey: _goLlmApiKey,
+          model: _goLlmModel,
+          messages: messages,
+          maxTokens: maxTokens,
+          useSlashCompletions: false,
+        );
+        if (text.isNotEmpty) return text;
+      } catch (e) {
+        debugPrint('[CoreHealth AI] GoLLM completions failed: $e.');
+      }
+    }
+
+    // 4. Fallback 3: Gemini
+    if (_gemini.isAvailable) {
+      try {
+        final messages = <Map<String, String>>[];
+        messages.add({'role': 'system', 'content': system});
+        if (historyMessages != null) {
+          messages.addAll(historyMessages);
+        }
+        messages.add({'role': 'user', 'content': prompt});
+
+        final text = await _gemini.chatCompletions(
+          messages: messages,
+          maxTokens: maxTokens,
+        );
+        if (text.isNotEmpty) return text;
+      } catch (e) {
+        debugPrint('[CoreHealth AI] Gemini completions failed: $e.');
+      }
+    }
+
+    throw Exception('Tất cả các nhà cung cấp dịch vụ AI đều thất bại.');
+  }
+
+  String _buildProfileText(DemoProfile profile) {
+    final buffer = StringBuffer('=== PROFILE NGƯỜI DÙNG ===\n');
+    if (profile.heightCm > 0 && profile.weightKg > 0) {
+      buffer.writeln(
+        'Cân nặng: ${profile.weightKg.toStringAsFixed(0)}kg | '
+        'Chiều cao: ${profile.heightCm.toStringAsFixed(0)}cm | '
+        'BMI: ${profile.bmi.toStringAsFixed(1)}'
+      );
+    }
+    if (profile.age > 0) {
+      final genderText = profile.gender == Gender.female
+          ? 'Nữ'
+          : (profile.gender == Gender.male ? 'Nam' : 'Khác');
+      buffer.writeln('Tuổi: ${profile.age} | Giới tính: $genderText');
+    }
+    if (profile.targetWeightKg > 0) {
+      buffer.writeln('Mục tiêu cân: ${profile.targetWeightKg.toStringAsFixed(0)}kg');
+    }
+    final goalText = switch (profile.goal) {
+      GoalType.loseWeight => 'Giảm mỡ',
+      GoalType.gainMuscle => 'Tăng cơ',
+      GoalType.maintain => 'Duy trì vóc dáng',
+    };
+    buffer.writeln('Mục tiêu: $goalText');
+
+    final activityText = switch (profile.activityLevel) {
+      ActivityLevel.sedentary => 'Ít vận động',
+      ActivityLevel.light => 'Nhẹ (1-3 buổi/tuần)',
+      ActivityLevel.active => 'Tích cực (4-5 buổi/tuần)',
+      ActivityLevel.veryActive => 'Rất tích cực',
+      ActivityLevel.moderate => 'Vừa phải (3-4 buổi/tuần)',
+    };
+    buffer.writeln('Mức vận động: $activityText');
+
+    if (profile.allergies.isNotEmpty) {
+      buffer.writeln('Dị ứng: ${profile.allergies.join(", ")}');
+    }
+    if (profile.dietaryRestrictions.isNotEmpty) {
+      buffer.writeln('Kiêng ăn: ${profile.dietaryRestrictions.join(", ")}');
+    }
+    if (profile.healthConditions.isNotEmpty) {
+      buffer.writeln('Bệnh án / tình trạng sức khoẻ: ${profile.healthConditions.join(", ")}');
+    }
+    buffer.writeln('===========================');
+    return buffer.toString();
+  }
+
+  String _buildTodayPlanContext(DemoProfile profile) {
+    final buffer = StringBuffer('\n=== PLAN HÔM NAY ===\n');
+    buffer.writeln('Workout plan: ${profile.hasWorkoutPlan ? "CÓ" : "CHƯA TẠO"}');
+    buffer.writeln('Meal plan: ${profile.hasMealPlan ? "CÓ" : "CHƯA TẠO"}');
+
+    final targetCal = _targetCalories(profile);
+    buffer.writeln('Calo mục tiêu hôm nay: $targetCal kcal');
+
+    final hour = DateTime.now().hour;
+    String currentMealContext;
+    if (hour < 10) {
+      currentMealContext = 'Hiện tại là BUỔI SÁNG. Các bữa còn lại: Sáng, Trưa, Tối, Snack.';
+    } else if (hour < 14) {
+      currentMealContext = 'Hiện tại là BUỔI TRƯA. Bữa sáng đã qua. Các bữa còn lại: Trưa, Tối, Snack.';
+    } else if (hour < 17) {
+      currentMealContext = 'Hiện tại là BUỔI CHIỀU. Bữa sáng và trưa đã qua. Các bữa còn lại: Snack, Tối.';
+    } else {
+      currentMealContext = 'Hiện tại là BUỔI TỐI. Bữa sáng, trưa, snack đã qua. Bữa còn lại: CHỈ CÒN BỮA TỐI.';
+    }
+    buffer.writeln(currentMealContext);
+
+    buffer.writeln('''
+QUY TẮC ĐIỀU CHỈNH THEO THỜI GIAN:
+- Nếu user muốn thay đổi bữa CUỐI CÙNG trong ngày (không còn bữa sau): đề xuất bù trừ bằng TĂNG tập luyện hôm nay hoặc GIẢM calo NGÀY MAI. KHÔNG đề xuất đổi bữa đã qua.
+- Nếu còn bữa sau: đề xuất giảm calo ở bữa sau để bù.
+- Nếu user đã tập xong: đề xuất điều chỉnh bữa ăn (tăng protein phục hồi).
+- KHÔNG BAO GIỜ đề xuất thay đổi bữa ĐÃ QUA (đã ăn rồi không thể đổi).
+''');
+    buffer.writeln('===========================');
+    return buffer.toString();
+  }
+
+  String _historyText(List<ChatMessage> history) {
+    if (history.isEmpty) return '(chưa có)';
+    final recent = history.length > 8 ? history.sublist(history.length - 8) : history;
+    return recent
+        .map((m) => '${m.isUser ? "user" : "assistant"}: ${m.text.trim()}')
+        .join('\n');
+  }
 
   Future<List<InsightItem>> generateInsights(DemoProfile profile) async {
     if (!hasApiKey) return _fallbackInsights();
@@ -78,10 +328,9 @@ accent chỉ dùng: success, emerald, blue, orange, violet
 title ≤ 30 ký tự, message 1-2 câu ngắn''';
 
     try {
-      final text = await _callMessages(
-        messages: [
-          {'role': 'user', 'content': prompt}
-        ],
+      final text = await _callChatCompletions(
+        system: 'Bạn là trợ lý phân tích sức khỏe.',
+        prompt: prompt,
         maxTokens: 512,
       );
       final insights = _parseInsights(text);
@@ -116,83 +365,80 @@ title ≤ 30 ký tự, message 1-2 câu ngắn''';
       debugPrint('RAG error: $e');
     }
 
-    final role = switch (coachType) {
-      CoachType.nutrition => 'chuyên gia dinh dưỡng',
-      CoachType.workout => 'huấn luyện viên thể lực',
-      CoachType.wellness => 'chuyên gia sức khỏe tổng thể',
-    };
+    const system = '''Bạn là CoreHealth — người bạn am hiểu sức khoẻ, dinh dưỡng và luyện tập, trò chuyện thân thiện với người dùng Việt Nam.
+Đọc kỹ profile (cân nặng, chiều cao, tuổi, mục tiêu, bệnh án, dị ứng, kiêng ăn) trước khi trả lời.
+Bạn không phải bác sĩ — nếu câu hỏi vượt ngoài dinh dưỡng/luyện tập, nhắc nhẹ nên gặp chuyên gia.
 
-    final topicScope = switch (coachType) {
-      CoachType.nutrition =>
-        'dinh dưỡng, chế độ ăn, thực phẩm, calo, macro, bữa ăn',
-      CoachType.workout =>
-        'tập luyện, bài tập, lịch tập, cơ bắp, cardio, phục hồi',
-      CoachType.wellness =>
-        'sức khỏe tổng thể, giấc ngủ, stress, thói quen lành mạnh, cân nặng',
-    };
+PHONG CÁCH — đây là quy tắc cứng, không được vi phạm:
+1. KHÔNG viết mỗi ý một dòng ngắn rời rạc.
+2. Viết thành câu đầy đủ, liền mạch như người đang giải thích cho bạn.
+3. Giọng ấm, tự nhiên — như nhắn tin cho bạn bè.
+4. KHÔNG liệt kê lại thông tin profile ở đầu câu trả lời.
+5. Số liệu cụ thể chỉ nêu khi trực tiếp hữu ích.
+6. CÁ NHÂN HOÁ: đọc kỹ dị ứng, kiêng ăn, bệnh lý — TUYỆT ĐỐI không gợi ý thực phẩm/bài tập gây hại cho người dùng.
+7. Nếu người dùng có bệnh lý (tiểu đường, tim mạch, gout...), phải tránh thực phẩm/bài tập nguy hiểm cho bệnh đó.
+Trả lời tiếng Việt, khoảng 2-4 câu hoặc 2-3 gạch đầu dòng đầy đủ — đủ ý, không lan man.
 
-    final system = StringBuffer();
-    system
-        .writeln('Tên bạn là CoreHealth Coach — $role của ứng dụng CoreHealth. '
-            'KHÔNG phải Claude, ChatGPT, hay bất kỳ AI nào khác. '
-            'Không bao giờ tự nhận là AI ngôn ngữ.');
-    system.writeln('Phạm vi: $topicScope. '
-        'Câu hỏi ngoài phạm vi: từ chối lịch sự. '
-        'Từ ngữ thô tục/không phù hợp: nhắc nhở lịch sự.');
-    system.writeln(
-        'Hồ sơ: ${profile.name}, ${profile.age}t, ${profile.gender.title}, '
-        '${profile.heightCm}cm, ${profile.weightKg}kg, BMI ${profile.bmi.toStringAsFixed(1)}, '
-        'mục tiêu: ${profile.goal.title}, vận động: ${profile.activityLevel.title}.');
-    if (profile.trainingFrequency.isNotEmpty) {
-      system.writeln('Tần suất tập: ${profile.trainingFrequency}.');
-    }
-    if (profile.focusAreas.isNotEmpty) {
-      system.writeln('Vùng tập trung: ${profile.focusAreas.join(', ')}.');
-    }
-    if (profile.preferredActivities.isNotEmpty) {
-      system.writeln(
-          'Hoạt động yêu thích: ${profile.preferredActivities.join(', ')}.');
-    }
-    if (profile.allergies.isNotEmpty) {
-      system
-          .writeln('DỊ ỨNG tuyệt đối tránh: ${profile.allergies.join(', ')}.');
-    }
-    if (profile.dietaryRestrictions.isNotEmpty) {
-      system.writeln('Kiêng ăn: ${profile.dietaryRestrictions.join(', ')}.');
-    }
-    if (profile.nutritionPriorities.isNotEmpty) {
-      system
-          .writeln('Ưu tiên meal: ${profile.nutritionPriorities.join(', ')}.');
-    }
-    if (profile.mealBudget.isNotEmpty || profile.cookingTime.isNotEmpty) {
-      system.writeln(
-          'Meal thực tế: ngân sách ${profile.mealBudget.isEmpty ? 'không rõ' : profile.mealBudget}, thời gian nấu ${profile.cookingTime.isEmpty ? 'không rõ' : profile.cookingTime}.');
-    }
-    if (profile.healthConditions.isNotEmpty) {
-      system.writeln('Bệnh: ${profile.healthConditions.join(', ')}.');
-    }
+TRẠNG THÁI PLAN:
+Profile có 2 cờ: hasMealPlan (true/false), hasWorkoutPlan (true/false).
+- Nếu cờ tương ứng = false, NÓI RÕ user chưa có plan đó trước khi đề xuất bất cứ điều chỉnh nào, và mời họ bấm "Tạo bằng AI" ở trang Thực đơn / Lịch tập.
+- Nếu cờ = true, được phép đề xuất swap/đổi bài tập/bữa ăn cụ thể, dùng JSON adjustment block.
+- Người dùng có thể nói thẳng "đổi bài squat thành deadlift" — bạn PHẢI nhận diện ý đồ swap và emit workoutChanges = [{"exercise":"Deadlift 3x8"}] kèm reason giải thích lý do thay.
+
+QUAN TRỌNG — PHÁT HIỆN ẢNH HƯỞNG ĐẾN PLAN:
+Nếu tin nhắn của người dùng MÔ TẢ hành động ảnh hưởng đến lịch ăn/tập hôm nay (ví dụ: muốn ăn món ngoài plan, đã tập xong, bị đau, bỏ bữa, ăn thêm, đổi bài tập...), bạn PHẢI:
+1. Phân tích impact (calo thừa/thiếu, cường độ thay đổi)
+2. Đề xuất điều chỉnh CÁC BỮA/BÀI TẬP KHÁC (KHÔNG PHẢI món user muốn ăn) để bù trừ
+3. GIỮ NGUYÊN món user muốn ăn — chỉ thay đổi các bữa/bài tập KHÁC trong ngày hoặc ngày mai
+
+VÍ DỤ ĐÚNG:
+- User: "Tôi muốn ăn gà rán bữa tối" → GIỮ gà rán bữa tối, đề xuất: tập thêm 20 phút cardio HOẶC giảm calo bữa sáng ngày mai
+- User: "Tôi muốn ăn phở bữa sáng" → GIỮ phở bữa sáng, đề xuất: giảm carb bữa trưa để bù
+
+VÍ DỤ SAI (KHÔNG ĐƯỢC LÀM):
+- User: "Tôi muốn ăn gà rán bữa tối" → ĐỔI gà rán thành salad ← SAI! Phải giữ gà rán!
+
+4. Kết thúc response bằng JSON block (sau dấu ---ADJUSTMENT---) chứa thay đổi cho CẢ ĂN UỐNG VÀ TẬP LUYỆN:
+{"type":"both","mealChanges":[{"slot":"Sáng ngày mai","name":"Omelette rau nhẹ","kcal":300,"protein":25,"carbs":20,"fat":8,"details":"Trứng 2 quả + rau xào ít dầu"}],"workoutChanges":[{"exercise":"Cardio nhẹ 15 phút sau ăn tối"}],"reason":"Gà rán ~650 kcal, thừa 250 kcal. Bù: giảm sáng mai + thêm cardio tối nay."}
+
+LƯU Ý FORMAT:
+- type PHẢI là "both" (luôn đề xuất cả ăn lẫn tập)
+- mealChanges: array các bữa ăn cần thay đổi (bữa KHÁC, không phải bữa user muốn ăn)
+- workoutChanges: array bài tập thêm/đổi để bù calo
+- Nếu không cần đổi meal thì mealChanges = [], tương tự workoutChanges
+- reason: giải thích ngắn gọn
+
+Nếu tin nhắn KHÔNG ảnh hưởng plan (hỏi kiến thức chung, hỏi về supplement...), trả lời bình thường KHÔNG có JSON block.''';
+
+    final profileText = _buildProfileText(profile);
+    final todayPlanContext = _buildTodayPlanContext(profile);
+    String ragText = '';
     if (ragCtx.isNotEmpty) {
-      final capped =
-          ragCtx.length > 800 ? '${ragCtx.substring(0, 800)}…' : ragCtx;
-      system.writeln(capped);
+      ragText = '\n=== KIẾN THỨC THAM KHẢO ===\n$ragCtx\n===========================\n';
     }
-    system.writeln(
-        'Trả lời tối đa 100 từ, tiếng Việt, KHÔNG dùng markdown (**, *, #). Text thuần.');
 
-    final recentHistory =
-        history.length > 6 ? history.sublist(history.length - 6) : history;
+    final prompt = '$profileText'
+        '$todayPlanContext'
+        '$ragText'
+        '\nLoại coach: ${coachType.name}'
+        '\nLịch sử gần đây:\n${_historyText(history)}'
+        '\nCâu hỏi mới nhất: $userMessage';
 
-    final messages = <Map<String, String>>[
-      for (final m in recentHistory)
-        {'role': m.isUser ? 'user' : 'assistant', 'content': m.text},
-      {'role': 'user', 'content': userMessage},
-    ];
+    final historyMessages = <Map<String, String>>[];
+    final recentHistory = history.length > 8 ? history.sublist(history.length - 8) : history;
+    for (final m in recentHistory) {
+      historyMessages.add({
+        'role': m.isUser ? 'user' : 'assistant',
+        'content': m.text,
+      });
+    }
 
     try {
-      return await _callMessages(
-        system: system.toString(),
-        messages: messages,
-        maxTokens: 400,
+      return await _callChatCompletions(
+        system: system,
+        prompt: prompt,
+        maxTokens: 1000,
+        historyMessages: historyMessages,
       );
     } on _RateLimitException {
       return 'Bạn đang nhắn quá nhanh, vui lòng đợi vài giây rồi thử lại.';
@@ -253,11 +499,10 @@ Format (7 phần tử, tổng calo/ngày ≈ $targetCal):
 Dùng món Việt Nam quen thuộc, đa dạng từng ngày.''';
 
     try {
-      final text = await _callMessages(
-        messages: [
-          {'role': 'user', 'content': prompt}
-        ],
-        maxTokens: 1800,
+      final text = await _callChatCompletions(
+        system: 'Bạn là chuyên gia lập thực đơn dinh dưỡng cho người Việt.',
+        prompt: prompt,
+        maxTokens: 2500,
       );
       final result = _parseMealPlan(text);
       if (result.isNotEmpty) _mealPlanCache[key] = result;
@@ -293,11 +538,10 @@ Format (7 phần tử):
 Mỗi ngày 4-5 bài (trừ ngày 7). Đa dạng nhóm cơ. Phù hợp mục tiêu và mức vận động.''';
 
     try {
-      final text = await _callMessages(
-        messages: [
-          {'role': 'user', 'content': prompt}
-        ],
-        maxTokens: 1800,
+      final text = await _callChatCompletions(
+        system: 'Bạn là huấn luyện viên thể thao chuyên nghiệp.',
+        prompt: prompt,
+        maxTokens: 2500,
       );
       final result = _parseWorkoutPlan(text);
       if (result.isNotEmpty) _workoutPlanCache[key] = result;
@@ -388,41 +632,6 @@ Mỗi ngày 4-5 bài (trừ ngày 7). Đa dạng nhóm cơ. Phù hợp mục ti�
       debugPrint('_parseWorkoutPlan error: $e');
       return [];
     }
-  }
-
-  Future<String> _callMessages({
-    required List<Map<String, String>> messages,
-    required int maxTokens,
-    String? system,
-  }) async {
-    final body = <String, dynamic>{
-      'model': _model,
-      'max_tokens': maxTokens,
-      'messages': messages,
-    };
-    if (system != null) body['system'] = system;
-
-    final response = await http.post(
-      Uri.parse('$_baseUrl/v1/messages'),
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': _apiKey,
-        'User-Agent': 'CoreHealth/1.0',
-        'anthropic-version': '2023-06-01',
-      },
-      body: jsonEncode(body),
-    );
-
-    if (response.statusCode == 429) {
-      throw const _RateLimitException();
-    }
-    if (response.statusCode != 200) {
-      throw Exception('HTTP ${response.statusCode}: ${response.body}');
-    }
-
-    final json = jsonDecode(response.body) as Map<String, dynamic>;
-    final content = json['content'] as List;
-    return content.first['text'] as String;
   }
 
   String _profileHash(DemoProfile p) =>

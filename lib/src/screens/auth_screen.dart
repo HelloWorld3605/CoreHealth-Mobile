@@ -19,6 +19,10 @@ class _AuthScreenState extends State<AuthScreen> {
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
   final _referralCodeController = TextEditingController();
+  final _resetEmailController = TextEditingController();
+  final _resetOtpController = TextEditingController();
+  final _resetPasswordController = TextEditingController();
+  final _resetConfirmPasswordController = TextEditingController();
   bool _isSubmitting = false;
 
   @override
@@ -28,6 +32,10 @@ class _AuthScreenState extends State<AuthScreen> {
     _passwordController.dispose();
     _confirmPasswordController.dispose();
     _referralCodeController.dispose();
+    _resetEmailController.dispose();
+    _resetOtpController.dispose();
+    _resetPasswordController.dispose();
+    _resetConfirmPasswordController.dispose();
     super.dispose();
   }
 
@@ -91,6 +99,230 @@ class _AuthScreenState extends State<AuthScreen> {
   void _showMessage(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message)),
+    );
+  }
+
+  void _showForgotPasswordSheet(AppController controller) {
+    _resetEmailController.text = _emailController.text.trim();
+    _resetOtpController.clear();
+    _resetPasswordController.clear();
+    _resetConfirmPasswordController.clear();
+    var step = 0;
+    var submitting = false;
+
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            Future<void> requestReset() async {
+              final email = _resetEmailController.text.trim();
+              if (email.isEmpty) {
+                _showMessage('Vui lòng nhập email đã đăng ký.');
+                return;
+              }
+
+              setSheetState(() => submitting = true);
+              final error = await controller.requestPasswordReset(email: email);
+              if (!mounted) return;
+              setSheetState(() => submitting = false);
+              if (error != null) {
+                _showMessage(error);
+                return;
+              }
+              setSheetState(() => step = 1);
+              _showMessage('Nếu email tồn tại, mã OTP đã được gửi.');
+            }
+
+            Future<void> resetPassword() async {
+              final email = _resetEmailController.text.trim();
+              final otp = _resetOtpController.text.trim();
+              final password = _resetPasswordController.text;
+              if (password != _resetConfirmPasswordController.text) {
+                _showMessage('Mật khẩu xác nhận chưa khớp.');
+                return;
+              }
+              final navigator = Navigator.of(sheetContext);
+
+              setSheetState(() => submitting = true);
+              final error = await controller.resetPassword(
+                email: email,
+                otp: otp,
+                newPassword: password,
+              );
+              if (!mounted) return;
+              setSheetState(() => submitting = false);
+              if (error != null) {
+                _showMessage(error);
+                return;
+              }
+              navigator.pop();
+              _emailController.text = email;
+              _passwordController.clear();
+              _showMessage('Đã đặt lại mật khẩu. Vui lòng đăng nhập lại.');
+            }
+
+            final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+            final tt = Theme.of(context).textTheme;
+            return Padding(
+              padding: EdgeInsets.fromLTRB(16, 16, 16, 16 + bottomInset),
+              child: Material(
+                color: AppPalette.surface,
+                borderRadius: BorderRadius.circular(28),
+                clipBehavior: Clip.antiAlias,
+                child: SafeArea(
+                  top: false,
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(22, 20, 22, 24),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              width: 48,
+                              height: 48,
+                              decoration: BoxDecoration(
+                                color: AppPalette.emeraldSoft,
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              child: const Icon(
+                                Icons.lock_reset_rounded,
+                                color: AppPalette.emeraldDeep,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Quên mật khẩu',
+                                    style: tt.titleLarge?.copyWith(
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    step == 0
+                                        ? 'Nhập email để nhận mã OTP.'
+                                        : 'Nhập mã OTP và mật khẩu mới.',
+                                    style: tt.bodySmall?.copyWith(
+                                      color: AppPalette.mutedText,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            IconButton(
+                              onPressed: () => Navigator.of(sheetContext).pop(),
+                              icon: const Icon(Icons.close_rounded),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 20),
+                        TextField(
+                          controller: _resetEmailController,
+                          enabled: step == 0 && !submitting,
+                          keyboardType: TextInputType.emailAddress,
+                          textInputAction: TextInputAction.next,
+                          decoration: const InputDecoration(
+                            labelText: 'Email đã đăng ký',
+                            prefixIcon: Icon(Icons.email_outlined),
+                          ),
+                        ),
+                        if (step == 1) ...[
+                          const SizedBox(height: 16),
+                          TextField(
+                            controller: _resetOtpController,
+                            keyboardType: TextInputType.number,
+                            textInputAction: TextInputAction.next,
+                            maxLength: 6,
+                            decoration: const InputDecoration(
+                              labelText: 'Mã OTP',
+                              counterText: '',
+                              prefixIcon: Icon(Icons.pin_outlined),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          TextField(
+                            controller: _resetPasswordController,
+                            obscureText: true,
+                            textInputAction: TextInputAction.next,
+                            decoration: const InputDecoration(
+                              labelText: 'Mật khẩu mới',
+                              prefixIcon: Icon(Icons.lock_outline_rounded),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          TextField(
+                            controller: _resetConfirmPasswordController,
+                            obscureText: true,
+                            textInputAction: TextInputAction.done,
+                            onSubmitted: (_) => resetPassword(),
+                            decoration: const InputDecoration(
+                              labelText: 'Xác nhận mật khẩu mới',
+                              prefixIcon: Icon(Icons.verified_user_outlined),
+                            ),
+                          ),
+                        ],
+                        if (controller.devPasswordResetOtp != null) ...[
+                          const SizedBox(height: 16),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: AppPalette.emeraldSoft,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: AppPalette.accentMuted),
+                            ),
+                            child: Text(
+                              'Development OTP: ${controller.devPasswordResetOtp}',
+                              style: tt.bodyMedium?.copyWith(
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 22),
+                        FilledButton.icon(
+                          onPressed: submitting
+                              ? null
+                              : step == 0
+                                  ? requestReset
+                                  : resetPassword,
+                          icon: Icon(step == 0
+                              ? Icons.mark_email_read_outlined
+                              : Icons.check_circle_outline_rounded),
+                          label: Text(
+                            submitting
+                                ? 'Đang xử lý...'
+                                : step == 0
+                                    ? 'Gửi mã OTP'
+                                    : 'Đặt lại mật khẩu',
+                          ),
+                        ),
+                        if (step == 1) ...[
+                          const SizedBox(height: 10),
+                          Center(
+                            child: TextButton(
+                              onPressed: submitting ? null : requestReset,
+                              child: const Text('Gửi lại mã OTP'),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
     );
   }
 
@@ -197,6 +429,24 @@ class _AuthScreenState extends State<AuthScreen> {
                             labelText: 'Mật khẩu',
                           ),
                         ),
+                        if (isSignIn) ...[
+                          const SizedBox(height: 8),
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: TextButton(
+                              onPressed: _isSubmitting
+                                  ? null
+                                  : () => _showForgotPasswordSheet(controller),
+                              child: const Text(
+                                'Quên mật khẩu?',
+                                style: TextStyle(
+                                  color: AppPalette.emeraldDeep,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
                         if (!isSignIn) ...[
                           const SizedBox(height: 16),
                           TextField(
@@ -213,7 +463,7 @@ class _AuthScreenState extends State<AuthScreen> {
                             textInputAction: TextInputAction.done,
                             decoration: const InputDecoration(
                               labelText: 'Mã giới thiệu (nếu có)',
-                              hintText: 'Ví dụ: TUNG-123456',
+                              hintText: 'Ví dụ: XXXX-123456',
                             ),
                           ),
                         ],

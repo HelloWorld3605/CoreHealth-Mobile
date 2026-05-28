@@ -23,9 +23,18 @@ class SepayService {
   static const _token =
       String.fromEnvironment('SEPAY_API_TOKEN', defaultValue: '');
 
-  static const _account = '4444815072005';
-  static const _bankId = 'MB';
-  static const _accountName = 'NGUYEN HUU TUNG';
+  static const _account = String.fromEnvironment(
+    'SEPAY_ACCOUNT_NUMBER',
+    defaultValue: '4444815072005',
+  );
+  static const _bankId = String.fromEnvironment(
+    'SEPAY_BANK_ID',
+    defaultValue: 'MB',
+  );
+  static const _accountName = String.fromEnvironment(
+    'SEPAY_ACCOUNT_NAME',
+    defaultValue: 'NGUYEN HUU TUNG',
+  );
   static const _baseUrl = 'https://my.sepay.vn/userapi';
 
   // -------------------------------------------------------------------------

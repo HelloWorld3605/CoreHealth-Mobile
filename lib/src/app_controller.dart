@@ -1,9 +1,10 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
-import 'data/local_app_repository.dart';
+import 'data/app_repository.dart';
 import 'demo_data.dart';
 import 'models.dart';
 import 'services/ai_service.dart';
@@ -36,13 +37,19 @@ class AppController extends ChangeNotifier {
   Set<int> _completedMealDays = const {};
   List<Product> _cart = const [];
   List<OrderSummary> _orders = const [];
+  List<TokenTransaction> _tokenTransactions = const [];
+  UserSettings _settings = const UserSettings();
   String? _pendingVerificationEmail;
   String? _devOtp;
+  String? _pendingPasswordResetEmail;
+  String? _devPasswordResetOtp;
 
   List<InsightItem> _insights = DemoData.dashboardInsights;
   bool _insightsLoading = false;
   final _chatHistories = <CoachType, List<ChatMessage>>{};
   final _chatLoading = <CoachType, bool>{};
+  List<ChatSession> _chatSessions = const [];
+  String? _activeChatSessionId;
 
   List<MealPlanDay>? _aiMealTemplate; // 7-day AI rotation
   List<WorkoutDay>? _aiWorkoutTemplate; // 7-day AI rotation
@@ -60,12 +67,17 @@ class AppController extends ChangeNotifier {
   bool get isAuthenticated => _session != null;
   String? get pendingVerificationEmail => _pendingVerificationEmail;
   String? get devOtp => _devOtp;
+  String? get pendingPasswordResetEmail => _pendingPasswordResetEmail;
+  String? get devPasswordResetOtp => _devPasswordResetOtp;
   DemoProfile get profile => _profile;
   List<WeightEntry> get weightHistory => List.unmodifiable(_weightHistory);
   List<MealItem> get todayMeals =>
       mealPlan.isNotEmpty ? mealPlan.first.meals : DemoData.todayMeals;
   List<OrderSummary> get orders => List.unmodifiable(_orders);
   List<Product> get cart => List.unmodifiable(_cart);
+  List<TokenTransaction> get tokenTransactions =>
+      List.unmodifiable(_tokenTransactions);
+  UserSettings get settings => _settings;
   int get cartCount => _cart.length;
   int get cartTotalK => _cart.fold(0, (sum, item) => sum + item.priceK);
   int get streakCount => _completedWorkoutDays.length;
@@ -80,6 +92,19 @@ class AppController extends ChangeNotifier {
   bool get isWorkoutPlanGenerating => _workoutPlanGenerating;
   bool get hasMealAiPlan => _aiMealTemplate != null;
   bool get hasWorkoutAiPlan => _aiWorkoutTemplate != null;
+
+  List<ChatSession> get chatSessions => _chatSessions;
+  String? get activeChatSessionId => _activeChatSessionId;
+  bool get isWellnessChatLoading => _chatLoading[CoachType.wellness] == true;
+
+  ChatSession? get activeChatSession {
+    if (_activeChatSessionId == null) return null;
+    try {
+      return _chatSessions.firstWhere((s) => s.id == _activeChatSessionId);
+    } catch (_) {
+      return null;
+    }
+  }
 
   List<MealLog> get todayMealLogs => List.unmodifiable(_todayMealLogs);
 
@@ -183,6 +208,7 @@ class AppController extends ChangeNotifier {
     if (_stage == AppStage.home) {
       _refreshInsightsBackground();
       await _loadTodayLogs();
+      await _loadTokenTransactions();
       unawaited(_initializeHomeNotifications());
     }
   }
@@ -407,9 +433,65 @@ class AppController extends ChangeNotifier {
     }
   }
 
+  Future<String?> requestPasswordReset({required String email}) async {
+    final normalizedEmail = email.trim();
+    if (normalizedEmail.isEmpty) {
+      return 'Vui lòng nhập email đã đăng ký.';
+    }
+
+    try {
+      final response =
+          await _repository.requestPasswordReset(email: normalizedEmail);
+      if (!response.success) {
+        return 'Không thể gửi mã đặt lại mật khẩu lúc này.';
+      }
+      _pendingPasswordResetEmail = response.email;
+      _devPasswordResetOtp = response.devOtp;
+      notifyListeners();
+      return null;
+    } on AppAuthException catch (error) {
+      return error.message;
+    } catch (e, st) {
+      debugPrint('requestPasswordReset error: $e\n$st');
+      return 'Không thể gửi mã đặt lại mật khẩu lúc này.';
+    }
+  }
+
+  Future<String?> resetPassword({
+    required String email,
+    required String otp,
+    required String newPassword,
+  }) async {
+    if (otp.trim().length < 6) {
+      return 'Vui lòng nhập đầy đủ mã OTP 6 chữ số.';
+    }
+    if (newPassword.length < 8) {
+      return 'Mật khẩu mới cần ít nhất 8 ký tự.';
+    }
+
+    try {
+      await _repository.resetPassword(
+        email: email.trim(),
+        otp: otp.trim(),
+        newPassword: newPassword,
+      );
+      _pendingPasswordResetEmail = null;
+      _devPasswordResetOtp = null;
+      notifyListeners();
+      return null;
+    } on AppAuthException catch (error) {
+      return error.message;
+    } catch (e, st) {
+      debugPrint('resetPassword error: $e\n$st');
+      return 'Không thể đặt lại mật khẩu lúc này.';
+    }
+  }
+
   void cancelVerification() {
     _pendingVerificationEmail = null;
     _devOtp = null;
+    _pendingPasswordResetEmail = null;
+    _devPasswordResetOtp = null;
     _stage = AppStage.auth;
     notifyListeners();
   }
@@ -421,10 +503,22 @@ class AppController extends ChangeNotifier {
     }
 
     try {
+      final onboardingProfile = _preserveAccountFields(profile);
       final userData = await _repository.saveOnboardingProfile(
         userId: session.userId,
-        profile: _withStarterTokens(profile),
+        profile: _withStarterTokens(onboardingProfile),
       );
+      final tokenDelta =
+          userData.profile.tokenEarned - onboardingProfile.tokenEarned;
+      if (tokenDelta > 0) {
+        await _recordTokenTransaction(
+          amount: tokenDelta,
+          priceK: 0,
+          description: userData.profile.referredBy.isEmpty
+              ? 'Quà tặng đăng ký mới'
+              : 'Quà tặng đăng ký qua mã giới thiệu',
+        );
+      }
       _session = AppUserSession(
         userId: session.userId,
         email: session.email,
@@ -610,6 +704,13 @@ class AppController extends ChangeNotifier {
   }
 
   void activateTokenPack(TokenPack pack) {
+    final transaction = TokenTransaction(
+      id: _generateTransactionId('pack'),
+      amount: pack.tokens,
+      priceK: pack.priceK,
+      description: 'Nạp gói ${pack.title}',
+      createdAt: DateTime.now(),
+    );
     final updatedProfile = _profile.copyWith(
       tokenBalance: _profile.tokenBalance + pack.tokens,
       tokenEarned: _profile.tokenEarned + pack.tokens,
@@ -618,6 +719,7 @@ class AppController extends ChangeNotifier {
       subscriptionStartDate: null,
     );
     _profile = updatedProfile;
+    _tokenTransactions = [transaction, ..._tokenTransactions];
     notifyListeners();
     _enqueueMutation((userId) {
       return _repository.updateTokenWallet(
@@ -627,6 +729,7 @@ class AppController extends ChangeNotifier {
         tokenSpent: updatedProfile.tokenSpent,
       );
     });
+    unawaited(_persistTokenTransaction(transaction));
   }
 
   Future<String?> claimCoreHealthMaxTrial() async {
@@ -635,6 +738,7 @@ class AppController extends ChangeNotifier {
       return 'Phiên đăng nhập không hợp lệ.';
     }
 
+    final previousEarned = _profile.tokenEarned;
     final trialProfile = _withStarterTokens(_profile);
 
     try {
@@ -644,6 +748,14 @@ class AppController extends ChangeNotifier {
       );
       _showPostOnboardingOffer = false;
       _applyUserData(userData, notify: false);
+      final tokenDelta = userData.profile.tokenEarned - previousEarned;
+      if (tokenDelta > 0) {
+        await _recordTokenTransaction(
+          amount: tokenDelta,
+          priceK: 0,
+          description: 'Quà tặng đăng ký mới',
+        );
+      }
       notifyListeners();
       _refreshInsightsBackground();
       return null;
@@ -669,6 +781,17 @@ class AppController extends ChangeNotifier {
     notifyListeners();
     _enqueueMutation((userId) {
       return _repository.updateWeight(userId: userId, weight: weight);
+    });
+  }
+
+  void updateSettings(UserSettings settings) {
+    _settings = settings;
+    notifyListeners();
+    _enqueueMutation((userId) {
+      return _repository.updateUserSettings(
+        userId: userId,
+        settings: settings,
+      );
     });
   }
 
@@ -710,6 +833,7 @@ class AppController extends ChangeNotifier {
         ? AppStage.home
         : AppStage.onboarding;
     notifyListeners();
+    unawaited(_loadTokenTransactions());
   }
 
   void _applyUserData(PersistedUserData data, {required bool notify}) {
@@ -720,6 +844,7 @@ class AppController extends ChangeNotifier {
     _completedMealDays = data.completedMealDays;
     _cart = data.cart;
     _orders = data.orders;
+    _settings = data.settings;
     // Xóa AI plan cache nếu goal/allergies/activityLevel thay đổi
     if (oldProfile.goal != _profile.goal ||
         oldProfile.activityLevel != _profile.activityLevel ||
@@ -738,6 +863,7 @@ class AppController extends ChangeNotifier {
       _aiWorkoutTemplate = null;
       _aiService.invalidateAllPlanCaches();
     }
+    _loadChatSessions();
     if (notify) {
       notifyListeners();
     }
@@ -751,10 +877,16 @@ class AppController extends ChangeNotifier {
     _completedMealDays = const {};
     _cart = const [];
     _orders = const [];
+    _tokenTransactions = const [];
+    _settings = const UserSettings();
     _showPostOnboardingOffer = false;
     _insights = DemoData.dashboardInsights;
     _chatHistories.clear();
     _chatLoading.clear();
+    _chatSessions = const [];
+    _activeChatSessionId = null;
+    _pendingPasswordResetEmail = null;
+    _devPasswordResetOtp = null;
     _aiMealTemplate = null;
     _aiWorkoutTemplate = null;
     _todayMealLogs = const [];
@@ -794,13 +926,59 @@ class AppController extends ChangeNotifier {
     });
   }
 
+  Future<void> _loadTokenTransactions() async {
+    final userId = _session?.userId;
+    if (userId == null) return;
+    try {
+      _tokenTransactions =
+          await _repository.getTokenTransactions(userId: userId);
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Error loading token transactions: $e');
+    }
+  }
+
+  Future<void> _recordTokenTransaction({
+    required int amount,
+    required int priceK,
+    required String description,
+  }) async {
+    final transaction = TokenTransaction(
+      id: _generateTransactionId('token'),
+      amount: amount,
+      priceK: priceK,
+      description: description,
+      createdAt: DateTime.now(),
+    );
+    _tokenTransactions = [transaction, ..._tokenTransactions];
+    await _persistTokenTransaction(transaction);
+  }
+
+  Future<void> _persistTokenTransaction(TokenTransaction transaction) async {
+    final userId = _session?.userId;
+    if (userId == null) return;
+    try {
+      await _repository.addTokenTransaction(
+        userId: userId,
+        transaction: transaction,
+      );
+    } catch (e) {
+      debugPrint('Error saving token transaction: $e');
+    }
+  }
+
+  String _generateTransactionId(String prefix) {
+    return 'txn_${prefix}_${DateTime.now().microsecondsSinceEpoch}_${math.Random().nextInt(9000) + 1000}';
+  }
+
   DemoProfile _withStarterTokens(DemoProfile profile) {
     if (profile.coreHealthMaxTrialExpiresAt != null) {
       return profile;
     }
     if (profile.tokenBalance > 0) {
       return profile.copyWith(
-        coreHealthMaxTrialExpiresAt: DateTime.now().add(const Duration(days: 7)),
+        coreHealthMaxTrialExpiresAt:
+            DateTime.now().add(const Duration(days: 7)),
       );
     }
     const starterTokens = 25;
@@ -812,6 +990,200 @@ class AppController extends ChangeNotifier {
       tokenEarned: profile.tokenEarned + starterTokens,
       coreHealthMaxTrialExpiresAt: DateTime.now().add(const Duration(days: 7)),
     );
+  }
+
+  DemoProfile _preserveAccountFields(DemoProfile profile) {
+    return profile.copyWith(
+      tokenBalance: _profile.tokenBalance,
+      tokenEarned: _profile.tokenEarned,
+      tokenSpent: _profile.tokenSpent,
+      referralCode: _profile.referralCode,
+      referredBy: _profile.referredBy,
+      subscriptionStartDate: _profile.subscriptionStartDate,
+      coreHealthMaxTrialExpiresAt: _profile.coreHealthMaxTrialExpiresAt,
+    );
+  }
+
+  Future<void> _loadChatSessions() async {
+    final userId = _session?.userId;
+    if (userId == null) return;
+    try {
+      final sessions = await _repository.getChatSessions(userId: userId);
+      _chatSessions = sessions;
+      if (_activeChatSessionId == null && _chatSessions.isNotEmpty) {
+        _activeChatSessionId = _chatSessions.first.id;
+      }
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Error loading chat sessions: $e');
+    }
+  }
+
+  void selectChatSession(String? sessionId) {
+    _activeChatSessionId = sessionId;
+    notifyListeners();
+  }
+
+  void startNewChatSession() {
+    _activeChatSessionId = null;
+    notifyListeners();
+  }
+
+  Future<void> deleteChatSession(String sessionId) async {
+    final userId = _session?.userId;
+    if (userId == null) return;
+    try {
+      await _repository.deleteChatSession(userId: userId, sessionId: sessionId);
+      _chatSessions = _chatSessions.where((s) => s.id != sessionId).toList();
+      if (_activeChatSessionId == sessionId) {
+        _activeChatSessionId =
+            _chatSessions.isNotEmpty ? _chatSessions.first.id : null;
+      }
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Error deleting chat session: $e');
+    }
+  }
+
+  Future<void> sendSessionChatMessage(String text) async {
+    if (text.trim().isEmpty) return;
+    final userId = _session?.userId;
+    if (userId == null) return;
+    if (_chatLoading[CoachType.wellness] == true) return;
+
+    final sessionId = _activeChatSessionId ?? _generateUuid();
+    ChatSession? existingSession;
+    final existingIndex = _chatSessions.indexWhere((s) => s.id == sessionId);
+    if (existingIndex != -1) {
+      existingSession = _chatSessions[existingIndex];
+    }
+
+    final title = existingSession != null
+        ? existingSession.title
+        : (text.trim().length > 30
+            ? '${text.trim().substring(0, 30)}...'
+            : text.trim());
+
+    final category = existingSession != null
+        ? existingSession.category
+        : _classifyCategory(text.trim());
+
+    final oldHistory =
+        existingSession != null ? existingSession.history : <ChatMessage>[];
+    final updatedHistory = [
+      ...oldHistory,
+      ChatMessage(text: text.trim(), isUser: true),
+    ];
+
+    final tempSession = ChatSession(
+      id: sessionId,
+      title: title,
+      ts: DateTime.now().millisecondsSinceEpoch,
+      history: updatedHistory,
+      category: category,
+    );
+
+    _chatLoading[CoachType.wellness] = true;
+    _activeChatSessionId = sessionId;
+    _chatSessions = [
+      tempSession,
+      ..._chatSessions.where((s) => s.id != sessionId),
+    ];
+    notifyListeners();
+
+    try {
+      await _repository.saveChatSession(userId: userId, session: tempSession);
+
+      final reply = await _aiService.chat(
+        userMessage: text.trim(),
+        profile: _profile,
+        history: oldHistory,
+        coachType: CoachType.wellness,
+      );
+
+      _spendTokens(TokenCosts.basicAiChat);
+
+      final finalHistory = [
+        ...updatedHistory,
+        ChatMessage(text: reply, isUser: false),
+      ];
+
+      final finalSession = ChatSession(
+        id: sessionId,
+        title: title,
+        ts: DateTime.now().millisecondsSinceEpoch,
+        history: finalHistory,
+        category: category,
+      );
+
+      _chatSessions = [
+        finalSession,
+        ..._chatSessions.where((s) => s.id != sessionId),
+      ];
+      await _repository.saveChatSession(userId: userId, session: finalSession);
+    } catch (e) {
+      final errorHistory = [
+        ...updatedHistory,
+        const ChatMessage(
+            text: 'Xin lỗi, có lỗi kết nối xảy ra.', isUser: false),
+      ];
+      final errorSession = ChatSession(
+        id: sessionId,
+        title: title,
+        ts: DateTime.now().millisecondsSinceEpoch,
+        history: errorHistory,
+        category: category,
+      );
+      _chatSessions = [
+        errorSession,
+        ..._chatSessions.where((s) => s.id != sessionId),
+      ];
+    } finally {
+      _chatLoading[CoachType.wellness] = false;
+      notifyListeners();
+    }
+  }
+
+  String _classifyCategory(String text) {
+    final lower = text.toLowerCase();
+    if (lower.contains('tập') ||
+        lower.contains('cardio') ||
+        lower.contains('gym') ||
+        lower.contains('chạy') ||
+        lower.contains('cơ') ||
+        lower.contains('lịch tập') ||
+        lower.contains('workout') ||
+        lower.contains('tập luyện')) {
+      return 'Workout';
+    }
+    if (lower.contains('ăn') ||
+        lower.contains('calo') ||
+        lower.contains('macro') ||
+        lower.contains('dinh dưỡng') ||
+        lower.contains('thực đơn') ||
+        lower.contains('protein') ||
+        lower.contains('chay') ||
+        lower.contains('nutrition') ||
+        lower.contains('bữa ăn')) {
+      return 'Nutrition';
+    }
+    if (lower.contains('form') ||
+        lower.contains('tư thế') ||
+        lower.contains('động tác') ||
+        lower.contains('đúng cách') ||
+        lower.contains('kỹ thuật') ||
+        lower.contains('knee') ||
+        lower.contains('squat')) {
+      return 'Form';
+    }
+    return 'General';
+  }
+
+  String _generateUuid() {
+    final random = math.Random();
+    return List.generate(
+            16, (i) => random.nextInt(256).toRadixString(16).padLeft(2, '0'))
+        .join();
   }
 }
 

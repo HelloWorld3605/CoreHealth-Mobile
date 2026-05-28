@@ -1,6 +1,6 @@
 import 'package:corehealth_flutter/main.dart';
 import 'package:corehealth_flutter/src/app_controller.dart';
-import 'package:corehealth_flutter/src/data/local_app_repository.dart';
+import 'package:corehealth_flutter/src/data/app_repository.dart';
 import 'package:corehealth_flutter/src/demo_data.dart';
 import 'package:corehealth_flutter/src/models.dart';
 import 'package:flutter/material.dart';
@@ -29,6 +29,39 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Bắt đầu miễn phí'), findsOneWidget);
+  });
+
+  test('finishOnboarding preserves referral and token fields from signup',
+      () async {
+    final controller = AppController(
+      repository: _MemoryRepository(),
+    );
+
+    await controller.register(
+      displayName: 'Demo User',
+      email: 'demo@corehealth.app',
+      password: 'password123',
+    );
+    await controller.verifyOtp(
+      email: 'demo@corehealth.app',
+      otp: '123456',
+    );
+
+    final onboardingProfile = DemoData.initialProfile.copyWith(
+      name: 'Updated Name',
+      tokenBalance: 0,
+      tokenEarned: 0,
+      referralCode: '',
+      referredBy: '',
+    );
+    final error = await controller.finishOnboarding(onboardingProfile);
+
+    expect(error, isNull);
+    expect(controller.profile.name, equals('Updated Name'));
+    expect(controller.profile.tokenBalance, equals(65));
+    expect(controller.profile.tokenEarned, equals(65));
+    expect(controller.profile.referralCode, equals('DEMO-123456'));
+    expect(controller.profile.referredBy, equals('referrer-1'));
   });
 }
 
@@ -65,7 +98,13 @@ class _MemoryRepository implements AppRepository {
     required String otp,
   }) async {
     _userData = PersistedUserData(
-      profile: DemoData.initialProfile.copyWith(name: 'Demo User'),
+      profile: DemoData.initialProfile.copyWith(
+        name: 'Demo User',
+        tokenBalance: 65,
+        tokenEarned: 65,
+        referralCode: 'DEMO-123456',
+        referredBy: 'referrer-1',
+      ),
       weightHistory: DemoData.weightEntries,
       completedWorkoutDays: const {},
       completedMealDays: const {},
@@ -93,6 +132,23 @@ class _MemoryRepository implements AppRepository {
     );
   }
 
+  @override
+  Future<RegisterResponseData> requestPasswordReset({
+    required String email,
+  }) async {
+    return RegisterResponseData(
+      success: true,
+      email: email,
+      devOtp: '123456',
+    );
+  }
+
+  @override
+  Future<void> resetPassword({
+    required String email,
+    required String otp,
+    required String newPassword,
+  }) async {}
 
   @override
   Future<AuthResult> signIn({
@@ -178,6 +234,27 @@ class _MemoryRepository implements AppRepository {
     );
     return _userData;
   }
+
+  @override
+  Future<PersistedUserData> updateUserSettings({
+    required String userId,
+    required UserSettings settings,
+  }) async {
+    _userData = _userData.copyWith(settings: settings);
+    return _userData;
+  }
+
+  @override
+  Future<List<TokenTransaction>> getTokenTransactions({
+    required String userId,
+  }) async =>
+      const [];
+
+  @override
+  Future<void> addTokenTransaction({
+    required String userId,
+    required TokenTransaction transaction,
+  }) async {}
 
   @override
   Future<PersistedUserData> updateWeight({
@@ -334,4 +411,16 @@ class _MemoryRepository implements AppRepository {
   @override
   Future<void> deleteMealLog(
       {required String userId, required String logId}) async {}
+
+  @override
+  Future<List<ChatSession>> getChatSessions({required String userId}) async =>
+      const [];
+
+  @override
+  Future<void> saveChatSession(
+      {required String userId, required ChatSession session}) async {}
+
+  @override
+  Future<void> deleteChatSession(
+      {required String userId, required String sessionId}) async {}
 }

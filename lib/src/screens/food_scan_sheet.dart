@@ -12,7 +12,9 @@ enum _ScanState { idle, naming, loading, result, error }
 const _slots = ['🌅 Sáng', '☀️ Trưa', '🍎 Xế', '🌙 Tối'];
 
 class FoodScanSheet extends StatefulWidget {
-  const FoodScanSheet({super.key});
+  const FoodScanSheet({super.key, this.triggerCameraDirectly = false});
+
+  final bool triggerCameraDirectly;
 
   @override
   State<FoodScanSheet> createState() => _FoodScanSheetState();
@@ -22,6 +24,16 @@ class _FoodScanSheetState extends State<FoodScanSheet> {
   final _service = FoodScanService();
   final _picker = ImagePicker();
   final _nameCtrl = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.triggerCameraDirectly) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _pickImage(ImageSource.camera);
+      });
+    }
+  }
 
   _ScanState _state = _ScanState.idle;
   FoodScanResult? _result;

@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+import 'gemini_service.dart';
+
 class FoodScanResult {
   final String name;
   final int calories;
@@ -22,38 +24,181 @@ class FoodScanResult {
 }
 
 class FoodScanService {
-  static const _apiKey = String.fromEnvironment('BEEKNOEE_API_KEY', defaultValue: '');
-  static const _baseUrl = 'https://platform.beeknoee.com';
-  static const _model = 'gpt-5.4';
+  final _gemini = GeminiService();
 
-  bool get isAvailable => _apiKey.isNotEmpty;
+  // API keys are injected at build time via --dart-define (see .env file)
+  static const _groqApiKey = String.fromEnvironment('GROQ_API_KEY');
+  static const _groqBaseUrl = 'https://api.groq.com/openai';
+  static const _groqModel = 'llama-3.3-70b-versatile';
+  static const _groqVisionModel = 'llama-3.2-90b-vision-preview';
+
+  static const _beeknoeeApiKey = String.fromEnvironment('BEEKNOEE_API_KEY');
+  static const _beeknoeeBaseUrl = 'https://platform.beeknoee.com';
+  static const _beeknoeeModel = 'qwen-3-235b-a22b-instruct-2507';
+
+  static const _goLlmApiKey = String.fromEnvironment('GOLLM_API_KEY');
+  static const _goLlmBaseUrl = 'https://api.gollm.cloud';
+  static const _goLlmModel = 'gpt-4.1';
+
+  bool get isAvailable =>
+      _groqApiKey.isNotEmpty ||
+      _beeknoeeApiKey.isNotEmpty ||
+      _goLlmApiKey.isNotEmpty ||
+      _gemini.isAvailable;
+
+  Future<String> _callTextCompletions({
+    required String system,
+    required String prompt,
+    required int maxTokens,
+  }) async {
+    // 1. Groq
+    if (_groqApiKey.isNotEmpty) {
+      try {
+        final messages = [
+          {'role': 'system', 'content': system},
+          {'role': 'user', 'content': prompt},
+        ];
+        final text = await _invokeOpenAiCompatible(
+          baseUrl: _groqBaseUrl,
+          apiKey: _groqApiKey,
+          model: _groqModel,
+          messages: messages,
+          maxTokens: maxTokens,
+          useSlashCompletions: true,
+        );
+        if (text.isNotEmpty) return text;
+      } catch (e) {
+        debugPrint('[FoodScan AI] Groq failed: $e. Trying Beeknoee...');
+      }
+    }
+
+    // 2. Beeknoee
+    if (_beeknoeeApiKey.isNotEmpty) {
+      try {
+        final messages = [
+          {'role': 'system', 'content': system},
+          {'role': 'user', 'content': prompt},
+        ];
+        final text = await _invokeOpenAiCompatible(
+          baseUrl: _beeknoeeBaseUrl,
+          apiKey: _beeknoeeApiKey,
+          model: _beeknoeeModel,
+          messages: messages,
+          maxTokens: maxTokens,
+          useSlashCompletions: true,
+        );
+        if (text.isNotEmpty) return text;
+      } catch (e) {
+        debugPrint('[FoodScan AI] Beeknoee failed: $e. Trying GoLLM...');
+      }
+    }
+
+    // 3. GoLLM
+    if (_goLlmApiKey.isNotEmpty) {
+      try {
+        final messages = [
+          {'role': 'system', 'content': system},
+          {'role': 'user', 'content': prompt},
+        ];
+        final text = await _invokeOpenAiCompatible(
+          baseUrl: _goLlmBaseUrl,
+          apiKey: _goLlmApiKey,
+          model: _goLlmModel,
+          messages: messages,
+          maxTokens: maxTokens,
+          useSlashCompletions: false,
+        );
+        if (text.isNotEmpty) return text;
+      } catch (e) {
+        debugPrint('[FoodScan AI] GoLLM failed: $e.');
+      }
+    }
+
+    // 4. Gemini
+    if (_gemini.isAvailable) {
+      try {
+        final messages = [
+          {'role': 'system', 'content': system},
+          {'role': 'user', 'content': prompt},
+        ];
+        final text = await _gemini.chatCompletions(
+          messages: messages,
+          maxTokens: maxTokens,
+        );
+        if (text.isNotEmpty) return text;
+      } catch (e) {
+        debugPrint('[FoodScan AI] Gemini failed: $e.');
+      }
+    }
+
+    throw Exception('Tất cả các nhà cung cấp dịch vụ AI đều thất bại.');
+  }
+
+  Future<String> _invokeOpenAiCompatible({
+    required String baseUrl,
+    required String apiKey,
+    required String model,
+    required List<dynamic> messages,
+    required int maxTokens,
+    required bool useSlashCompletions,
+  }) async {
+    final path = useSlashCompletions ? '/v1/chat/completions' : '/chat/completions';
+    final url = Uri.parse('$baseUrl$path');
+
+    final body = {
+      'model': model,
+      'messages': messages,
+      'max_tokens': maxTokens,
+    };
+
+    final headers = {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer $apiKey',
+      'User-Agent': 'CoreHealth/1.0',
+    };
+
+    final response = await http.post(
+      url,
+      headers: headers,
+      body: jsonEncode(body),
+    ).timeout(const Duration(seconds: 30));
+
+    if (response.statusCode != 200) {
+      throw Exception('HTTP ${response.statusCode}: ${response.body}');
+    }
+
+    final data = jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+    final choices = data['choices'] as List?;
+    if (choices == null || choices.isEmpty) {
+      return '';
+    }
+    final message = choices.first['message'] as Map<String, dynamic>?;
+    if (message == null) {
+      return '';
+    }
+    final text = message['content'] as String? ?? '';
+    return text.trim();
+  }
 
   Future<FoodScanResult> analyzeByImage(Uint8List bytes) async {
     if (!isAvailable) throw Exception('API key not configured');
 
     final base64Image = base64Encode(bytes);
-    final response = await http.post(
-      Uri.parse('$_baseUrl/v1/messages'),
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': _apiKey,
-        'anthropic-version': '2023-06-01',
-        'User-Agent': 'CoreHealth/1.0',
-      },
-      body: jsonEncode({
-        'model': _model,
-        'max_tokens': 200,
-        'system': 'You are a nutrition database. Always respond with ONLY a JSON object, no explanation, no markdown.',
-        'messages': [
+
+    if (_groqApiKey.isNotEmpty) {
+      try {
+        final messages = [
+          {
+            'role': 'system',
+            'content': 'You are a nutrition database. Always respond with ONLY a JSON object, no explanation, no markdown.'
+          },
           {
             'role': 'user',
             'content': [
               {
-                'type': 'image',
-                'source': {
-                  'type': 'base64',
-                  'media_type': 'image/jpeg',
-                  'data': base64Image,
+                'type': 'image_url',
+                'image_url': {
+                  'url': 'data:image/jpeg;base64,$base64Image',
                 },
               },
               {
@@ -64,53 +209,46 @@ class FoodScanService {
               },
             ],
           }
-        ],
-      }),
-    );
+        ];
 
-    if (response.statusCode != 200) {
-      throw Exception('HTTP ${response.statusCode}');
+        final text = await _invokeOpenAiCompatible(
+          baseUrl: _groqBaseUrl,
+          apiKey: _groqApiKey,
+          model: _groqVisionModel,
+          messages: messages,
+          maxTokens: 500,
+          useSlashCompletions: true,
+        );
+
+        if (text.isNotEmpty) {
+          return _parse('Món ăn', text);
+        }
+      } catch (e) {
+        debugPrint('[FoodScan AI] Vision failed: $e. Falling back to text name estimation.');
+      }
     }
 
-    final json = jsonDecode(response.body) as Map<String, dynamic>;
-    final text = (json['content'] as List).first['text'] as String;
-    return _parse('Món ăn', text);
+    throw Exception('Không phân tích được ảnh. Thử nhập tên món ăn.');
   }
 
   Future<FoodScanResult> analyzeByName(String foodName) async {
     if (!isAvailable) throw Exception('API key not configured');
 
-    final response = await http.post(
-      Uri.parse('$_baseUrl/v1/messages'),
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': _apiKey,
-        'anthropic-version': '2023-06-01',
-        'User-Agent': 'CoreHealth/1.0',
-      },
-      body: jsonEncode({
-        'model': _model,
-        'max_tokens': 150,
-        'system': 'You are a nutrition database. Always respond with ONLY a JSON object, no explanation, no markdown.',
-        'messages': [
-          {
-            'role': 'user',
-            'content':
-                'Nutrition for: $foodName\n'
-                'Reply ONLY with this JSON (no other text):\n'
-                '{"name":"<vietnamese name>","calories":<int>,"protein":<float>,"carbs":<float>,"fat":<float>,"serving":"<portion>"}',
-          }
-        ],
-      }),
-    );
+    final prompt = 'Nutrition for: $foodName\n'
+        'Reply ONLY with this JSON (no other text):\n'
+        '{"name":"<vietnamese name>","calories":<int>,"protein":<float>,"carbs":<float>,"fat":<float>,"serving":"<portion>"}';
 
-    if (response.statusCode != 200) {
-      throw Exception('HTTP ${response.statusCode}');
+    try {
+      final text = await _callTextCompletions(
+        system: 'You are a nutrition database. Always respond with ONLY a JSON object, no explanation, no markdown.',
+        prompt: prompt,
+        maxTokens: 200,
+      );
+      return _parse(foodName, text);
+    } catch (e) {
+      debugPrint('FoodScan analyzeByName error: $e');
+      return _fallback(foodName);
     }
-
-    final json = jsonDecode(response.body) as Map<String, dynamic>;
-    final text = (json['content'] as List).first['text'] as String;
-    return _parse(foodName, text);
   }
 
   FoodScanResult _parse(String fallbackName, String raw) {
