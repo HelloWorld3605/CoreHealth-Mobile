@@ -376,13 +376,13 @@ class CoreHealthBottomNav extends StatelessWidget {
     super.key,
     required this.currentIndex,
     required this.onTap,
-    this.onScanTap,
+    this.onCoachTap,
     this.onMoreTap,
   });
 
   final int currentIndex;
   final ValueChanged<int> onTap;
-  final VoidCallback? onScanTap;
+  final VoidCallback? onCoachTap;
   final VoidCallback? onMoreTap;
 
   @override
@@ -396,27 +396,27 @@ class CoreHealthBottomNav extends StatelessWidget {
     final rightItems =
         <({IconData icon, String label, int? tabIndex, VoidCallback? action})>[
       (
-        icon: Icons.local_mall_outlined,
-        label: 'Shop',
+        icon: Icons.shopping_bag_rounded,
+        label: 'Cửa hàng',
         tabIndex: 3,
         action: null
       ),
       (
-        icon: Icons.person_outline_rounded,
+        icon: Icons.person_rounded,
         label: 'Tôi',
         tabIndex: 4,
         action: null
       ),
       (
         icon: Icons.more_horiz_rounded,
-        label: 'More',
+        label: 'Xem thêm',
         tabIndex: null,
         action: onMoreTap
       ),
     ];
     final navHeight = layout.isCompact ? 70.0 : 76.0;
-    final cameraSize = layout.isCompact ? 58.0 : 64.0;
-    final cameraSlotWidth = layout.isCompact ? 66.0 : 76.0;
+    final coachSize = layout.isCompact ? 58.0 : 64.0;
+    final centerSlotWidth = layout.isCompact ? 66.0 : 76.0;
     final totalHeight = navHeight + 30;
     final itemLabelStyle = Theme.of(context).textTheme.labelSmall?.copyWith(
           fontSize: layout.isCompact ? 9.0 : 9.6,
@@ -452,7 +452,7 @@ class CoreHealthBottomNav extends StatelessWidget {
                   borderRadius: BorderRadius.circular(26),
                   border: Border.all(color: AppPalette.border),
                   boxShadow: const [
-                    BoxShadow(
+                     BoxShadow(
                       color: AppPalette.shadowHeavy,
                       blurRadius: 28,
                       offset: Offset(0, 10),
@@ -478,7 +478,7 @@ class CoreHealthBottomNav extends StatelessWidget {
                             .toList(),
                       ),
                     ),
-                    SizedBox(width: cameraSlotWidth),
+                    SizedBox(width: centerSlotWidth),
                     Expanded(
                       child: Row(
                         children: rightItems
@@ -513,20 +513,20 @@ class CoreHealthBottomNav extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   GestureDetector(
-                    onTap: onScanTap,
+                    onTap: onCoachTap,
                     child: Container(
-                      width: cameraSize,
-                      height: cameraSize,
+                      width: coachSize,
+                      height: coachSize,
                       decoration: BoxDecoration(
                         gradient: const LinearGradient(
-                          colors: [AppPalette.emerald, AppPalette.emeraldDeep],
+                          colors: [AppPalette.violet, Color(0xFFC58FFF)],
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
                         ),
                         shape: BoxShape.circle,
                         boxShadow: [
                           BoxShadow(
-                            color: AppPalette.emerald.withValues(alpha: 0.38),
+                            color: AppPalette.violet.withValues(alpha: 0.38),
                             blurRadius: 18,
                             offset: const Offset(0, 8),
                           ),
@@ -537,17 +537,17 @@ class CoreHealthBottomNav extends StatelessWidget {
                         ),
                       ),
                       child: const Icon(
-                        Icons.camera_alt_rounded,
-                        color: AppPalette.text,
+                        Icons.smart_toy_rounded,
+                        color: Colors.white,
                         size: 28,
                       ),
                     ),
                   ),
                   const SizedBox(height: 4),
                   SizedBox(
-                    width: cameraSlotWidth,
+                    width: centerSlotWidth,
                     child: Text(
-                      'Quét',
+                      'AI Coach',
                       maxLines: 1,
                       softWrap: false,
                       overflow: TextOverflow.fade,

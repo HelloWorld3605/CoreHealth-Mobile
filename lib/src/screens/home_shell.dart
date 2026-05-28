@@ -14,6 +14,16 @@ import 'edit_profile_screen.dart';
 import 'food_scan_sheet.dart';
 import 'payment_screen.dart';
 import 'health_history_screen.dart';
+import 'exercise_library_screen.dart';
+import 'recipes_screen.dart';
+import 'habits_screen.dart';
+import 'favorites_screen.dart';
+import 'challenges_screen.dart';
+import 'leaderboard_screen.dart';
+import 'workout_player_screen.dart';
+import 'orders_screen.dart';
+import 'settings_screen.dart';
+import 'schedule_screen.dart';
 
 void _showFoodScanSheet(BuildContext context) {
   showModalBottomSheet(
@@ -34,55 +44,180 @@ class HomeShell extends StatefulWidget {
 class _HomeShellState extends State<HomeShell> {
   bool _offerScheduled = false;
 
-  void _showFoodScan(BuildContext context) {
-    _showFoodScanSheet(context);
-  }
-
   void _showMoreMenu(BuildContext context) {
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (sheetContext) {
         final bottomInset = MediaQuery.of(sheetContext).padding.bottom;
-        return Padding(
-          padding: EdgeInsets.fromLTRB(16, 0, 16, 16 + bottomInset),
-          child: AppCard(
-            radius: 28,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _MoreMenuAction(
-                  icon: Icons.smart_toy_rounded,
-                  label: 'AI Coach',
-                  onTap: () {
-                    Navigator.of(sheetContext).pop();
-                    showCoachSheet(context, CoachType.wellness);
-                  },
-                ),
-                _MoreMenuAction(
-                  icon: Icons.camera_alt_rounded,
-                  label: 'Quét bữa ăn',
-                  onTap: () {
-                    Navigator.of(sheetContext).pop();
-                    _showFoodScan(context);
-                  },
-                ),
-                _MoreMenuAction(
-                  icon: Icons.insights_rounded,
-                  label: 'Lịch sử sức khỏe',
-                  onTap: () {
-                    Navigator.of(sheetContext).pop();
-                    Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (_) => const HealthHistoryScreen(),
-                      ),
-                    );
-                  },
-                ),
-              ],
-            ),
+        final items = [
+          (
+            icon: Icons.fitness_center_rounded,
+            label: 'Bài tập',
+            iconColor: AppPalette.blue,
+            bgColor: AppPalette.blueSoft,
+            onTap: () {
+              Navigator.of(sheetContext).pop();
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(builder: (_) => const ExerciseLibraryScreen()),
+              );
+            }
           ),
+          (
+            icon: Icons.restaurant_rounded,
+            label: 'Công thức',
+            iconColor: AppPalette.orange,
+            bgColor: const Color(0xFFFFF6EE),
+            onTap: () {
+              Navigator.of(sheetContext).pop();
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(builder: (_) => const RecipesScreen()),
+              );
+            }
+          ),
+          (
+            icon: Icons.check_circle_rounded,
+            label: 'Thói quen',
+            iconColor: AppPalette.emeraldDeep,
+            bgColor: AppPalette.emeraldSoft,
+            onTap: () {
+              Navigator.of(sheetContext).pop();
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(builder: (_) => const HabitsScreen()),
+              );
+            }
+          ),
+          (
+            icon: Icons.favorite_rounded,
+            label: 'Yêu thích',
+            iconColor: Colors.pinkAccent,
+            bgColor: const Color(0xFFFFF0F5),
+            onTap: () {
+              Navigator.of(sheetContext).pop();
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(builder: (_) => const FavoritesScreen()),
+              );
+            }
+          ),
+          (
+            icon: Icons.emoji_events_rounded,
+            label: 'Thử thách',
+            iconColor: Colors.amber,
+            bgColor: const Color(0xFFFFFDE7),
+            onTap: () {
+              Navigator.of(sheetContext).pop();
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(builder: (_) => const ChallengesScreen()),
+              );
+            }
+          ),
+          (
+            icon: Icons.leaderboard_rounded,
+            label: 'Xếp hạng',
+            iconColor: Colors.purpleAccent,
+            bgColor: const Color(0xFFFAE6FF),
+            onTap: () {
+              Navigator.of(sheetContext).pop();
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(builder: (_) => const LeaderboardScreen()),
+              );
+            }
+          ),
+          (
+            icon: Icons.receipt_long_rounded,
+            label: 'Đơn hàng',
+            iconColor: Colors.blueGrey,
+            bgColor: const Color(0xFFECEFF1),
+            onTap: () {
+              Navigator.of(sheetContext).pop();
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(builder: (_) => const OrdersScreen()),
+              );
+            }
+          ),
+          (
+            icon: Icons.calendar_month_rounded,
+            label: 'Lịch biểu',
+            iconColor: Colors.deepOrange,
+            bgColor: const Color(0xFFFBE9E7),
+            onTap: () {
+              Navigator.of(sheetContext).pop();
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(builder: (_) => const ScheduleScreen()),
+              );
+            }
+          ),
+          (
+            icon: Icons.settings_rounded,
+            label: 'Cài đặt',
+            iconColor: Colors.grey,
+            bgColor: const Color(0xFFF5F5F5),
+            onTap: () {
+              Navigator.of(sheetContext).pop();
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(builder: (_) => const SettingsScreen()),
+              );
+            }
+          ),
+        ];
+
+        return DraggableScrollableSheet(
+          initialChildSize: 0.58,
+          maxChildSize: 0.85,
+          minChildSize: 0.4,
+          expand: false,
+          builder: (context, scrollController) {
+            return Container(
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+              ),
+              padding: EdgeInsets.fromLTRB(20, 16, 20, 16 + bottomInset),
+              child: Column(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFDDE2EA),
+                      borderRadius: BorderRadius.circular(99),
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  Text(
+                    'Xem thêm chức năng',
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w900,
+                        ),
+                  ),
+                  const SizedBox(height: 18),
+                  Expanded(
+                    child: GridView.builder(
+                      controller: scrollController,
+                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 3,
+                        mainAxisSpacing: 16,
+                        crossAxisSpacing: 12,
+                        childAspectRatio: 0.95,
+                      ),
+                      itemCount: items.length,
+                      itemBuilder: (context, idx) {
+                        final item = items[idx];
+                        return _GridMenuItem(
+                          icon: item.icon,
+                          label: item.label,
+                          iconColor: item.iconColor,
+                          bgColor: item.bgColor,
+                          onTap: item.onTap,
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
         );
       },
     );
@@ -105,7 +240,7 @@ class _HomeShellState extends State<HomeShell> {
         fit: StackFit.expand,
         children: [
           IndexedStack(
-            index: controller.currentTab,
+            index: controller.currentTab.clamp(0, 4),
             children: const [
               _LegacyDashboardScreen(),
               MealPlanScreen(),
@@ -119,24 +254,10 @@ class _HomeShellState extends State<HomeShell> {
             right: 0,
             bottom: 0,
             child: CoreHealthBottomNav(
-              currentIndex: controller.currentTab,
+              currentIndex: controller.currentTab.clamp(0, 4),
               onTap: controller.selectTab,
-              onScanTap: () => _showFoodScan(context),
+              onCoachTap: () => showCoachSheet(context, CoachType.wellness),
               onMoreTap: () => _showMoreMenu(context),
-            ),
-          ),
-          Positioned(
-            right: 16,
-            bottom: MediaQuery.of(context).padding.bottom +
-                PhoneLayout.of(context).navBarHeight +
-                12,
-            child: FloatingActionButton.extended(
-              onPressed: () => showCoachSheet(context, CoachType.wellness),
-              backgroundColor: AppPalette.surface,
-              foregroundColor: AppPalette.text,
-              elevation: 4,
-              icon: const Icon(Icons.smart_toy_rounded),
-              label: const Text('Chat với AI'),
             ),
           ),
         ],
@@ -600,38 +721,57 @@ class _OfferPlanRow extends StatelessWidget {
   }
 }
 
-class _MoreMenuAction extends StatelessWidget {
-  const _MoreMenuAction({
+class _GridMenuItem extends StatelessWidget {
+  const _GridMenuItem({
     required this.icon,
     required this.label,
+    required this.iconColor,
+    required this.bgColor,
     required this.onTap,
   });
 
   final IconData icon;
   final String label;
+  final Color iconColor;
+  final Color bgColor;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return ListTile(
-      contentPadding: EdgeInsets.zero,
-      leading: Container(
-        width: 42,
-        height: 42,
-        decoration: BoxDecoration(
-          color: AppPalette.emeraldSoft,
-          borderRadius: BorderRadius.circular(14),
-        ),
-        child: Icon(icon, color: AppPalette.emeraldDeep),
-      ),
-      title: Text(
-        label,
-        style: Theme.of(context).textTheme.titleSmall?.copyWith(
-              fontWeight: FontWeight.w800,
-            ),
-      ),
-      trailing: const Icon(Icons.chevron_right_rounded),
+    return InkWell(
       onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            width: 52,
+            height: 52,
+            decoration: BoxDecoration(
+              color: bgColor,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: iconColor.withValues(alpha: 0.15),
+                  blurRadius: 8,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Icon(icon, color: iconColor, size: 24),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            label,
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 11,
+                  color: AppPalette.text,
+                ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -4001,6 +4141,21 @@ class _WorkoutPlanScreenState extends State<WorkoutPlanScreen>
               ),
             ),
             const SizedBox(height: 18),
+            GradientActionButton(
+              label: 'Bắt đầu tập ngay ⚡',
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => WorkoutPlayerScreen(
+                      workoutFocus: selectedPlan.focusVi,
+                      exercises: selectedPlan.exercises,
+                    ),
+                  ),
+                );
+              },
+              colors: const [AppPalette.blue, Color(0xFF67A1FF)],
+            ),
+            const SizedBox(height: 20),
             const SectionHeading(
               title: 'Danh sách bài tập',
               icon: Icon(Icons.list_alt_rounded, color: AppPalette.blue),
@@ -7686,3 +7841,34 @@ class _TodayMealsSummary extends StatelessWidget {
     );
   }
 }
+
+class StandaloneShopScreen extends StatelessWidget {
+  const StandaloneShopScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const Scaffold(
+      appBar: PreferredSize(
+        preferredSize: Size.fromHeight(60),
+        child: CoreHealthSubPageAppBar(title: 'Cửa hàng'),
+      ),
+      body: ShopScreen(),
+    );
+  }
+}
+
+class StandaloneProfileScreen extends StatelessWidget {
+  const StandaloneProfileScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const Scaffold(
+      appBar: PreferredSize(
+        preferredSize: Size.fromHeight(60),
+        child: CoreHealthSubPageAppBar(title: 'Hồ sơ cá nhân'),
+      ),
+      body: ProfileScreen(),
+    );
+  }
+}
+

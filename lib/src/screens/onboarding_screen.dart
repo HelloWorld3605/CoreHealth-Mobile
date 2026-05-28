@@ -8,6 +8,7 @@ import '../demo_data.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../widgets/adaptive.dart';
+import 'onboarding_preview_screen.dart';
 
 class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key});
@@ -197,13 +198,22 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       return;
     }
 
-    final error =
-        await CoreHealthScope.of(context).finishOnboarding(previewProfile);
-    if (!mounted || error == null) {
-      return;
-    }
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(error)),
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => OnboardingPreviewScreen(
+          onStart: () async {
+            final error = await CoreHealthScope.of(context).finishOnboarding(previewProfile);
+            if (!mounted) return;
+            if (error == null) {
+              Navigator.of(context).pop();
+            } else {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text(error)),
+              );
+            }
+          },
+        ),
+      ),
     );
   }
 
