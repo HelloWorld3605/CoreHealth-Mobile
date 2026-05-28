@@ -289,6 +289,11 @@ class _PinInputState extends State<PinInput> {
                   ],
                   decoration: const InputDecoration(
                     border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                    disabledBorder: InputBorder.none,
+                    errorBorder: InputBorder.none,
+                    filled: false,
                     counterText: '',
                     contentPadding: EdgeInsets.zero,
                   ),

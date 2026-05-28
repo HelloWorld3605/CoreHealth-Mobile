@@ -257,6 +257,26 @@ class MemoryAppRepository implements AppRepository {
       orders: const [],
     );
 
+    final signupTxn = TokenTransaction(
+      id: 'txn_${DateTime.now().microsecondsSinceEpoch}_signup',
+      amount: 25,
+      priceK: 0,
+      description: 'Quà tặng đăng ký mới',
+      createdAt: DateTime.now(),
+    );
+    _addTokenTransactionInMemory(userId, signupTxn);
+
+    if (pending.referralCode?.trim().isNotEmpty == true) {
+      final refTxn = TokenTransaction(
+        id: 'txn_${DateTime.now().microsecondsSinceEpoch}_ref_bonus_new',
+        amount: 40,
+        priceK: 0,
+        description: 'Quà tặng đăng ký qua mã giới thiệu',
+        createdAt: DateTime.now(),
+      );
+      _addTokenTransactionInMemory(userId, refTxn);
+    }
+
     return AuthResult(
       session: AppUserSession(
         userId: record.id,

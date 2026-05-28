@@ -248,6 +248,34 @@ class PostgresAppRepository implements AppRepository {
           tx, userId, displayName, pending['referral_code']?.toString());
       await _upsertProfile(tx,
           userId: userId, profile: profile, onboardingCompleted: false);
+      await tx.execute(
+        Sql.named('''
+          insert into token_transactions(id, user_id, amount, price_k, description, created_at)
+          values (@id, @userId, @amount, @priceK, @description, now())
+        '''),
+        parameters: {
+          'id': 'txn_${DateTime.now().microsecondsSinceEpoch}_signup',
+          'userId': userId,
+          'amount': 25,
+          'priceK': 0,
+          'description': 'Quà tặng đăng ký mới',
+        },
+      );
+      if (pending['referral_code']?.toString().trim().isNotEmpty == true) {
+        await tx.execute(
+          Sql.named('''
+            insert into token_transactions(id, user_id, amount, price_k, description, created_at)
+            values (@id, @userId, @amount, @priceK, @description, now())
+          '''),
+          parameters: {
+            'id': 'txn_${DateTime.now().microsecondsSinceEpoch}_ref_bonus_new',
+            'userId': userId,
+            'amount': 40,
+            'priceK': 0,
+            'description': 'Quà tặng đăng ký qua mã giới thiệu',
+          },
+        );
+      }
       await _persistSession(tx, userId);
       await tx.execute(
           Sql.named('delete from pending_verify where email = @email'),
@@ -1091,6 +1119,19 @@ class PostgresAppRepository implements AppRepository {
             where user_id = @referrerId
           '''),
           parameters: {'referrerId': referrerId},
+        );
+        await db.execute(
+          Sql.named('''
+            insert into token_transactions(id, user_id, amount, price_k, description, created_at)
+            values (@id, @userId, @amount, @priceK, @description, now())
+          '''),
+          parameters: {
+            'id': 'txn_${DateTime.now().microsecondsSinceEpoch}_ref_bonus',
+            'userId': referrerId,
+            'amount': 20,
+            'priceK': 0,
+            'description': 'Thưởng mốc giới thiệu bạn bè',
+          },
         );
       }
     }
