@@ -37,7 +37,7 @@ class MemoryAppRepository implements AppRepository {
       session: AppUserSession(
         userId: record.id,
         email: record.email,
-        onboardingCompleted: record.onboardingCompleted,
+        status: record.status,
       ),
       userData: data,
     );
@@ -66,7 +66,7 @@ class MemoryAppRepository implements AppRepository {
       session: AppUserSession(
         userId: record.id,
         email: record.email,
-        onboardingCompleted: record.onboardingCompleted,
+        status: record.status,
       ),
       userData: _dataByUserId[userId]!,
     );
@@ -243,7 +243,7 @@ class MemoryAppRepository implements AppRepository {
       passwordHash: _hashPasswordWithSalt(pending.password, salt),
       passwordSalt: salt,
       displayName: pending.displayName,
-      onboardingCompleted: false,
+      status: UserStatus.pendingOnboarding,
     );
     _usersById[userId] = record;
     _userIdByEmail[normalizedEmail] = userId;
@@ -281,7 +281,7 @@ class MemoryAppRepository implements AppRepository {
       session: AppUserSession(
         userId: record.id,
         email: record.email,
-        onboardingCompleted: false,
+        status: UserStatus.pendingOnboarding,
       ),
       userData: _dataByUserId[userId]!,
     );
@@ -422,7 +422,7 @@ class MemoryAppRepository implements AppRepository {
   }) async {
     final record = _usersById[userId];
     if (record != null) {
-      _usersById[userId] = record.copyWith(onboardingCompleted: true);
+      _usersById[userId] = record.copyWith(status: UserStatus.active);
     }
 
     final updated = PersistedUserData(
@@ -742,7 +742,7 @@ class _MemoryUserRecord {
     required this.passwordHash,
     required this.passwordSalt,
     required this.displayName,
-    required this.onboardingCompleted,
+    required this.status,
   });
 
   final String id;
@@ -750,10 +750,10 @@ class _MemoryUserRecord {
   final String passwordHash;
   final String passwordSalt;
   final String displayName;
-  final bool onboardingCompleted;
+  final UserStatus status;
 
   _MemoryUserRecord copyWith({
-    bool? onboardingCompleted,
+    UserStatus? status,
     String? passwordHash,
     String? passwordSalt,
   }) {
@@ -763,7 +763,7 @@ class _MemoryUserRecord {
       passwordHash: passwordHash ?? this.passwordHash,
       passwordSalt: passwordSalt ?? this.passwordSalt,
       displayName: displayName,
-      onboardingCompleted: onboardingCompleted ?? this.onboardingCompleted,
+      status: status ?? this.status,
     );
   }
 }

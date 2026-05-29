@@ -77,7 +77,7 @@ class PostgresAppRepository implements AppRepository {
       session: AppUserSession(
         userId: userId,
         email: account.email,
-        onboardingCompleted: _isOnboardingCompleted(profileRow),
+        status: _getUserStatus(profileRow),
       ),
       userData: await _readUserData(db, userId),
     );
@@ -112,7 +112,7 @@ class PostgresAppRepository implements AppRepository {
       session: AppUserSession(
         userId: userId,
         email: normalizedEmail,
-        onboardingCompleted: _isOnboardingCompleted(profileRow),
+        status: _getUserStatus(profileRow),
       ),
       userData: await _readUserData(db, userId),
     );
@@ -247,7 +247,7 @@ class PostgresAppRepository implements AppRepository {
       final profile = await _profileForNewVerifiedUser(
           tx, userId, displayName, pending['referral_code']?.toString());
       await _upsertProfile(tx,
-          userId: userId, profile: profile, onboardingCompleted: false);
+          userId: userId, profile: profile, status: UserStatus.pendingOnboarding);
       await tx.execute(
         Sql.named('''
           insert into token_transactions(id, user_id, amount, price_k, description, created_at)
@@ -284,7 +284,7 @@ class PostgresAppRepository implements AppRepository {
 
     return AuthResult(
       session: AppUserSession(
-          userId: userId, email: normalizedEmail, onboardingCompleted: false),
+          userId: userId, email: normalizedEmail, status: UserStatus.pendingOnboarding),
       userData: await _readUserData(db, userId),
     );
   }
@@ -444,7 +444,7 @@ class PostgresAppRepository implements AppRepository {
     final db = await _open();
     await db.runTx((tx) async {
       await _upsertProfile(tx,
-          userId: userId, profile: profile, onboardingCompleted: true);
+          userId: userId, profile: profile, status: UserStatus.active);
       await _replaceWeightHistory(tx, userId, _seedWeightHistory(profile));
     });
     return _readUserData(db, userId);
@@ -466,7 +466,7 @@ class PostgresAppRepository implements AppRepository {
         subscriptionStartDate:
             plan == SubscriptionPlan.free ? null : DateTime.now(),
       ),
-      onboardingCompleted: true,
+      status: UserStatus.active,
     );
     return _readUserData(db, userId);
   }
@@ -487,7 +487,7 @@ class PostgresAppRepository implements AppRepository {
           tokenBalance: tokenBalance,
           tokenEarned: tokenEarned,
           tokenSpent: tokenSpent),
-      onboardingCompleted: true,
+      status: UserStatus.active,
     );
     return _readUserData(db, userId);
   }
@@ -554,7 +554,7 @@ class PostgresAppRepository implements AppRepository {
       await _upsertProfile(tx,
           userId: userId,
           profile: current.copyWith(weightKg: weight),
-          onboardingCompleted: true);
+          status: UserStatus.active);
       await tx.execute(
         Sql.named(
             'insert into weight_entries(user_id, label, weight, recorded_at) values (@userId, @label, @weight, now())'),
@@ -858,7 +858,7 @@ class PostgresAppRepository implements AppRepository {
       final profile = _defaultProfileFor(
           account?.displayName ?? DemoData.initialProfile.name);
       await _upsertProfile(db,
-          userId: userId, profile: profile, onboardingCompleted: false);
+          userId: userId, profile: profile, status: UserStatus.pendingOnboarding);
       return _readProfileRow(db, userId);
     }
     return rows.first.toColumnMap();
@@ -992,7 +992,7 @@ class PostgresAppRepository implements AppRepository {
   Future<void> _upsertProfile(dynamic db,
       {required String userId,
       required DemoProfile profile,
-      required bool onboardingCompleted}) async {
+      required UserStatus status}) async {
     await db.execute(
       Sql.named('''
         insert into user_profiles (
@@ -1006,7 +1006,7 @@ class PostgresAppRepository implements AppRepository {
           @dietaryRestrictionsJson, @allergiesJson, @healthConditionsJson, @trainingFrequency, @focusAreasJson,
           @preferredActivitiesJson, @mealBudget, @cookingTime, @nutritionPrioritiesJson, @subscriptionStartDate,
           @coreHealthMaxTrialExpiresAt, @plan, @subscriptionMonths, @tokenBalance, @tokenEarned, @tokenSpent,
-          @referralCode, @referredBy, @onboardingCompleted, now()
+          @referralCode, @referredBy, @status, now()
         )
         on conflict (user_id) do update set
           name = excluded.name,
@@ -1039,12 +1039,12 @@ class PostgresAppRepository implements AppRepository {
           onboarding_completed = excluded.onboarding_completed,
           updated_at = now()
       '''),
-      parameters: _profileParameters(userId, profile, onboardingCompleted),
+      parameters: _profileParameters(userId, profile, status),
     );
   }
 
   Map<String, Object?> _profileParameters(
-          String userId, DemoProfile profile, bool onboardingCompleted) =>
+          String userId, DemoProfile profile, UserStatus status) =>
       {
         'userId': userId,
         'name': profile.name,
@@ -1074,7 +1074,7 @@ class PostgresAppRepository implements AppRepository {
         'tokenSpent': profile.tokenSpent,
         'referralCode': profile.referralCode,
         'referredBy': profile.referredBy,
-        'onboardingCompleted': onboardingCompleted,
+        'status': status.name,
       };
 
   Future<bool> _emailExists(dynamic db, String email) async {
@@ -1362,8 +1362,16 @@ double _doubleValue(Object? value, {double fallback = 0}) {
   return double.tryParse(value?.toString() ?? '') ?? fallback;
 }
 
-bool _isOnboardingCompleted(Map<String, Object?> row) =>
-    _parseBool(row['onboarding_completed']);
+UserStatus _getUserStatus(Map<String, Object?> row) {
+  final val = row['status'] as String?;
+  if (val != null) {
+    return UserStatus.values.firstWhere(
+      (e) => e.name == val,
+      orElse: () => UserStatus.pendingOnboarding,
+    );
+  }
+  return _parseBool(row['onboarding_completed']) ? UserStatus.active : UserStatus.pendingOnboarding;
+}
 
 String _normalizeEmail(String value) => value.trim().toLowerCase();
 

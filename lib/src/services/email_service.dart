@@ -1,5 +1,6 @@
 import 'package:mailer/mailer.dart';
 import 'package:mailer/smtp_server.dart';
+import 'package:flutter/foundation.dart';
 
 class EmailService {
   // Injected at build time via --dart-define (see .env file)
@@ -37,6 +38,19 @@ class EmailService {
     required String subject,
     required String intro,
   }) async {
+    if (_smtpUsername.isEmpty || _smtpPassword.isEmpty) {
+      if (kReleaseMode) {
+        throw StateError(
+          'Missing SMTP_USERNAME or SMTP_PASSWORD dart-define.',
+        );
+      }
+      debugPrint(
+        'Skipping OTP email because SMTP is not configured. '
+        'Recipient: $toEmail, OTP: $otp',
+      );
+      return;
+    }
+
     final smtpServer = gmail(_smtpUsername, _smtpPassword);
 
     final message = Message()

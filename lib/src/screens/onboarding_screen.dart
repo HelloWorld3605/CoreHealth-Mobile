@@ -3,6 +3,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/physics.dart';
 
+
+
 import '../app_controller.dart';
 import '../demo_data.dart';
 import '../models.dart';
@@ -65,28 +67,59 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   String mealBudget = 'Cân bằng';
   String cookingTime = '15-30 phút';
 
-  final List<_SurveyStep> steps = const [
-    _SurveyStep('Thông tin cơ bản', _StepKind.form),
-    _SurveyStep('Mục tiêu', _StepKind.choice),
-    _SurveyStep('Khảo sát ăn uống', _StepKind.section),
-    _SurveyStep('Khẩu vị', _StepKind.choice),
-    _SurveyStep('Dị ứng', _StepKind.choice),
-    _SurveyStep('Ngân sách & thời gian', _StepKind.choice),
-    _SurveyStep('Ưu tiên dinh dưỡng', _StepKind.choice),
-    _SurveyStep('Khảo sát thể lực', _StepKind.section),
-    _SurveyStep('Giới tính', _StepKind.choice),
-    _SurveyStep('Vùng tập trung', _StepKind.choice),
-    _SurveyStep('Chiều cao', _StepKind.measure),
-    _SurveyStep('Năm sinh', _StepKind.measure),
-    _SurveyStep('Mong muốn', _StepKind.choice),
-    _SurveyStep('Hiện tại', _StepKind.choice),
-    _SurveyStep('Cân nặng', _StepKind.measure),
-    _SurveyStep('Mục tiêu cụ thể', _StepKind.measure),
-    _SurveyStep('Tần suất', _StepKind.measure),
-    _SurveyStep('Chấn thương', _StepKind.choice),
-    _SurveyStep('Hoạt động', _StepKind.choice),
-    _SurveyStep('Kinh nghiệm', _StepKind.choice),
-  ];
+@override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final progress = CoreHealthScope.of(context).onboardingProgress;
+      if (progress.currentStep > 0 && progress.currentStep < steps.length) {
+        setState(() {
+          currentStep = progress.currentStep;
+        });
+      }
+    });
+  }
+
+  List<_SurveyStep> get steps {
+    final baseSteps = [
+      const _SurveyStep('Thông tin cơ bản', _StepKind.form),
+      const _SurveyStep('Mục tiêu', _StepKind.choice),
+    ];
+
+    final isFatLoss = selectedGoalCategory == _GoalCategory.fatLoss;
+    final isMuscleGain = selectedGoalCategory == _GoalCategory.muscleGain;
+
+    if (isFatLoss || selectedGoalCategory == _GoalCategory.weightGain) {
+      baseSteps.addAll([
+        const _SurveyStep('Khảo sát ăn uống', _StepKind.section),
+        const _SurveyStep('Khẩu vị', _StepKind.choice),
+        const _SurveyStep('Dị ứng', _StepKind.choice),
+        const _SurveyStep('Ngân sách & thời gian', _StepKind.choice),
+        const _SurveyStep('Ưu tiên dinh dưỡng', _StepKind.choice),
+      ]);
+    }
+
+    if (isMuscleGain || selectedGoalCategory == _GoalCategory.performance) {
+      baseSteps.addAll([
+        const _SurveyStep('Khảo sát thể lực', _StepKind.section),
+        const _SurveyStep('Giới tính', _StepKind.choice),
+        const _SurveyStep('Vùng tập trung', _StepKind.choice),
+        const _SurveyStep('Tần suất', _StepKind.measure),
+        const _SurveyStep('Chấn thương', _StepKind.choice),
+        const _SurveyStep('Hoạt động', _StepKind.choice),
+        const _SurveyStep('Kinh nghiệm', _StepKind.choice),
+      ]);
+    }
+
+    baseSteps.addAll([
+      const _SurveyStep('Chiều cao', _StepKind.measure),
+      const _SurveyStep('Năm sinh', _StepKind.measure),
+      const _SurveyStep('Cân nặng', _StepKind.measure),
+      const _SurveyStep('Mục tiêu cụ thể', _StepKind.measure),
+    ]);
+
+    return baseSteps;
+  }
 
   @override
   void dispose() {
@@ -194,7 +227,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     }
 
     if (currentStep < steps.length - 1) {
-      setState(() => currentStep += 1);
+      await CoreHealthScope.of(context).saveOnboardingStep(currentStep + 1, {'data': 'test'});
+      if (mounted) {
+        setState(() => currentStep += 1);
+      }
       return;
     }
 

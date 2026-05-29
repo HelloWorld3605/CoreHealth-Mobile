@@ -1,4 +1,11 @@
-enum AppStage { welcome, intro, auth, verifyOtp, onboarding, home }
+enum AppStage { welcome, intro, auth, verifyOtp, onboarding, generatingPlan, home }
+
+enum UserStatus {
+  pendingOnboarding,
+  generatingPlan,
+  planFailed,
+  active,
+}
 
 enum AuthMode { signIn, signUp }
 
@@ -48,12 +55,12 @@ class AppUserSession {
   const AppUserSession({
     required this.userId,
     required this.email,
-    required this.onboardingCompleted,
+    required this.status,
   });
 
   final String userId;
   final String email;
-  final bool onboardingCompleted;
+  final UserStatus status;
 }
 
 class DemoProfile {
@@ -802,4 +809,41 @@ class ExerciseVideo {
   });
 
   bool get hasVideo => videoUrl != null && videoUrl!.isNotEmpty;
+}
+
+class OnboardingProgress {
+  final int currentStep;
+  final List<int> completedSteps;
+  final bool isCompleted;
+
+  const OnboardingProgress({
+    this.currentStep = 0,
+    this.completedSteps = const [],
+    this.isCompleted = false,
+  });
+}
+
+enum AiPlanType { meal, workout, max }
+enum AiPlanStatus { generating, ready, failed }
+
+class AiPlan {
+  final String id;
+  final String userId;
+  final AiPlanType type;
+  final AiPlanStatus status;
+  final Map<String, dynamic> contentJson;
+  final int version;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+
+  const AiPlan({
+    required this.id,
+    required this.userId,
+    required this.type,
+    required this.status,
+    required this.contentJson,
+    required this.version,
+    required this.createdAt,
+    required this.updatedAt,
+  });
 }

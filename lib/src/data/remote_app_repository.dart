@@ -435,10 +435,20 @@ class RemoteAppRepository implements AppRepository {
 
   AppUserSession? _session(Map<String, dynamic>? json) {
     if (json == null) return null;
+    UserStatus status = UserStatus.pendingOnboarding;
+    final statusStr = json['status'] as String?;
+    if (statusStr != null) {
+      status = UserStatus.values.firstWhere(
+        (e) => e.name == statusStr,
+        orElse: () => UserStatus.pendingOnboarding,
+      );
+    } else if (json['onboardingCompleted'] == true) {
+      status = UserStatus.active;
+    }
     return AppUserSession(
       userId: json['userId'] as String? ?? '',
       email: json['email'] as String? ?? '',
-      onboardingCompleted: json['onboardingCompleted'] as bool? ?? false,
+      status: status,
     );
   }
 

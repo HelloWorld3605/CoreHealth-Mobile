@@ -10,17 +10,23 @@ import 'rag_service.dart';
 
 class AiService {
   // API keys are injected at build time via --dart-define (see .env file)
-  static const _groqApiKey = String.fromEnvironment('GROQ_API_KEY');
+  static const _groqApiKey1 = String.fromEnvironment('GROQ_API_KEY');
+  static const _groqApiKey2 = String.fromEnvironment('GROQ_API_KEY_2');
+  static const _groqApiKey3 = String.fromEnvironment('GROQ_API_KEY_3');
+  List<String> get _groqKeys => [_groqApiKey1, _groqApiKey2, _groqApiKey3].where((k) => k.isNotEmpty).toList();
   static const _groqBaseUrl = 'https://api.groq.com/openai';
   static const _groqModel = 'llama-3.3-70b-versatile';
 
-  static const _beeknoeeApiKey = String.fromEnvironment('BEEKNOEE_API_KEY');
+  static const _beeknoeeApiKey1 = String.fromEnvironment('BEEKNOEE_API_KEY');
+  static const _beeknoeeApiKey2 = String.fromEnvironment('BEEKNOEE_API_KEY_2');
+  static const _beeknoeeApiKey3 = String.fromEnvironment('BEEKNOEE_API_KEY_3');
+  List<String> get _beeknoeeKeys => [_beeknoeeApiKey1, _beeknoeeApiKey2, _beeknoeeApiKey3].where((k) => k.isNotEmpty).toList();
   static const _beeknoeeBaseUrl = 'https://platform.beeknoee.com';
-  static const _beeknoeeModel = 'qwen-3-235b-a22b-instruct-2507';
+  static const _beeknoeeModel = 'gpt-4o-mini';
 
   static const _goLlmApiKey = String.fromEnvironment('GOLLM_API_KEY');
   static const _goLlmBaseUrl = 'https://api.gollm.cloud';
-  static const _goLlmModel = 'gpt-4.1';
+  static const _goLlmModel = 'gpt-5-mini';
 
   // Cycle qua các ảnh có sẵn cho bữa ăn AI-generated
   static const _mealImages = [
@@ -40,11 +46,7 @@ class AiService {
   final _gemini = GeminiService();
   final _rag = RagService();
 
-  bool get hasApiKey =>
-      _groqApiKey.isNotEmpty ||
-      _beeknoeeApiKey.isNotEmpty ||
-      _goLlmApiKey.isNotEmpty ||
-      _gemini.isAvailable;
+  bool get hasApiKey => true;
 
   /// Helper for calling Open AI compatible chat completions endpoints.
   Future<String> _invokeOpenAiCompatible({
@@ -104,7 +106,8 @@ class AiService {
     List<Map<String, String>>? historyMessages,
   }) async {
     // 1. Primary: Groq
-    if (_groqApiKey.isNotEmpty) {
+    final groqKeys = _groqKeys;
+    for (int i = 0; i < groqKeys.length; i++) {
       try {
         final messages = <Map<String, String>>[];
         messages.add({'role': 'system', 'content': system});
@@ -115,7 +118,7 @@ class AiService {
 
         final text = await _invokeOpenAiCompatible(
           baseUrl: _groqBaseUrl,
-          apiKey: _groqApiKey,
+          apiKey: groqKeys[i],
           model: _groqModel,
           messages: messages,
           maxTokens: maxTokens,
@@ -123,12 +126,13 @@ class AiService {
         );
         if (text.isNotEmpty) return text;
       } catch (e) {
-        debugPrint('[CoreHealth AI] Groq completions failed: $e. Trying Beeknoee...');
+        debugPrint('[CoreHealth AI] Groq key ${i+1} failed: $e.');
       }
     }
 
     // 2. Fallback 1: Beeknoee
-    if (_beeknoeeApiKey.isNotEmpty) {
+    final beeknoeeKeys = _beeknoeeKeys;
+    for (int i = 0; i < beeknoeeKeys.length; i++) {
       try {
         final messages = <Map<String, String>>[];
         messages.add({'role': 'system', 'content': system});
@@ -139,7 +143,7 @@ class AiService {
 
         final text = await _invokeOpenAiCompatible(
           baseUrl: _beeknoeeBaseUrl,
-          apiKey: _beeknoeeApiKey,
+          apiKey: beeknoeeKeys[i],
           model: _beeknoeeModel,
           messages: messages,
           maxTokens: maxTokens,
@@ -147,7 +151,7 @@ class AiService {
         );
         if (text.isNotEmpty) return text;
       } catch (e) {
-        debugPrint('[CoreHealth AI] Beeknoee completions failed: $e. Trying GoLLM...');
+        debugPrint('[CoreHealth AI] Beeknoee key ${i+1} failed: $e.');
       }
     }
 
@@ -195,7 +199,32 @@ class AiService {
       }
     }
 
-    throw Exception('Tất cả các nhà cung cấp dịch vụ AI đều thất bại.');
+    // 5. Fallback 4: OpenRouter Free (Local Proxy)
+    final localUrls = ['http://10.0.2.2:20128', 'http://localhost:20128'];
+    for (final url in localUrls) {
+      try {
+        final messages = <Map<String, String>>[];
+        messages.add({'role': 'system', 'content': system});
+        if (historyMessages != null) {
+          messages.addAll(historyMessages);
+        }
+        messages.add({'role': 'user', 'content': prompt});
+
+        final text = await _invokeOpenAiCompatible(
+          baseUrl: url,
+          apiKey: '', 
+          model: 'oc/minimax-m2.5-free',
+          messages: messages,
+          maxTokens: maxTokens,
+          useSlashCompletions: true,
+        );
+        if (text.isNotEmpty) return text;
+      } catch (e) {
+        debugPrint('[CoreHealth AI] OpenRouterFree at $url failed: $e');
+      }
+    }
+
+    return 'Xin lỗi, hiện tại tất cả hệ thống AI đều đang quá tải hoặc hết hạn ngạch truy cập. Vui lòng kiểm tra lại API Key hoặc thử lại sau nhé.';
   }
 
   String _buildProfileText(DemoProfile profile) {
@@ -505,13 +534,18 @@ Dùng món Việt Nam quen thuộc, đa dạng từng ngày.''';
         maxTokens: 2500,
       );
       final result = _parseMealPlan(text);
-      if (result.isNotEmpty) _mealPlanCache[key] = result;
+      if (result.isEmpty) {
+        final fb = _fallbackMealPlan(targetCal);
+        _mealPlanCache[key] = fb;
+        return fb;
+      }
+      _mealPlanCache[key] = result;
       return result;
-    } on _RateLimitException {
-      return [];
     } catch (e) {
       debugPrint('AI meal plan error: $e');
-      return [];
+      final fb = _fallbackMealPlan(targetCal);
+      _mealPlanCache[key] = fb;
+      return fb;
     }
   }
 
@@ -544,13 +578,18 @@ Mỗi ngày 4-5 bài (trừ ngày 7). Đa dạng nhóm cơ. Phù hợp mục ti�
         maxTokens: 2500,
       );
       final result = _parseWorkoutPlan(text);
-      if (result.isNotEmpty) _workoutPlanCache[key] = result;
+      if (result.isEmpty) {
+        final fb = _fallbackWorkoutPlan();
+        _workoutPlanCache[key] = fb;
+        return fb;
+      }
+      _workoutPlanCache[key] = result;
       return result;
-    } on _RateLimitException {
-      return [];
     } catch (e) {
       debugPrint('AI workout plan error: $e');
-      return [];
+      final fb = _fallbackWorkoutPlan();
+      _workoutPlanCache[key] = fb;
+      return fb;
     }
   }
 
@@ -565,6 +604,74 @@ Mỗi ngày 4-5 bài (trừ ngày 7). Đa dạng nhóm cơ. Phù hợp mục ti�
       GoalType.gainMuscle => (tdee * 1.10).round(),
       _ => tdee.round(),
     };
+  }
+
+  List<MealPlanDay> _fallbackMealPlan(int targetCal) {
+    return List.generate(7, (i) {
+      return MealPlanDay(
+        dayNumber: i + 1,
+        meals: [
+          MealItem(
+            id: 'fb_d${i}_m0',
+            nameVi: 'Bữa sáng tiêu chuẩn',
+            slotLabel: 'Sáng',
+            calories: (targetCal * 0.3).round(),
+            protein: 20,
+            carbs: 40,
+            fat: 10,
+            imageUrl: _mealImages[0],
+            ingredients: const ['Trứng', 'Bánh mì nguyên cám', 'Sữa'],
+          ),
+          MealItem(
+            id: 'fb_d${i}_m1',
+            nameVi: 'Bữa trưa dinh dưỡng',
+            slotLabel: 'Trưa',
+            calories: (targetCal * 0.4).round(),
+            protein: 30,
+            carbs: 50,
+            fat: 15,
+            imageUrl: _mealImages[1],
+            ingredients: const ['Cơm gạo lứt', 'Ức gà', 'Rau xanh'],
+          ),
+          MealItem(
+            id: 'fb_d${i}_m2',
+            nameVi: 'Bữa tối nhẹ nhàng',
+            slotLabel: 'Tối',
+            calories: (targetCal * 0.3).round(),
+            protein: 25,
+            carbs: 30,
+            fat: 10,
+            imageUrl: _mealImages[2],
+            ingredients: const ['Cá hồi', 'Salad', 'Cà chua'],
+          ),
+        ],
+      );
+    });
+  }
+
+  List<WorkoutDay> _fallbackWorkoutPlan() {
+    return List.generate(7, (i) {
+      return WorkoutDay(
+        dayNumber: i + 1,
+        focusVi: i % 2 == 0 ? 'Toàn thân' : 'Nghỉ ngơi',
+        exercises: i % 2 == 0 ? [
+          WorkoutExercise(
+            id: 'fb_d${i}_e0',
+            nameVi: 'Khởi động',
+            description: 'Khởi động các khớp',
+            durationMinutes: 10,
+            caloriesBurned: 50,
+          ),
+          WorkoutExercise(
+            id: 'fb_d${i}_e1',
+            nameVi: 'Chạy bộ nhẹ',
+            description: 'Chạy bộ tại chỗ hoặc trên máy',
+            durationMinutes: 20,
+            caloriesBurned: 150,
+          ),
+        ] : [],
+      );
+    });
   }
 
   List<MealPlanDay> _parseMealPlan(String raw) {

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -31,6 +32,7 @@ class AppController extends ChangeNotifier {
   int _currentTab = 0;
   bool _showPostOnboardingOffer = false;
   AppUserSession? _session;
+  OnboardingProgress _onboardingProgress = const OnboardingProgress();
   DemoProfile _profile = DemoData.initialProfile;
   List<WeightEntry> _weightHistory = DemoData.weightEntries;
   Set<int> _completedWorkoutDays = const {};
@@ -69,6 +71,7 @@ class AppController extends ChangeNotifier {
   String? get devOtp => _devOtp;
   String? get pendingPasswordResetEmail => _pendingPasswordResetEmail;
   String? get devPasswordResetOtp => _devPasswordResetOtp;
+  OnboardingProgress get onboardingProgress => _onboardingProgress;
   DemoProfile get profile => _profile;
   List<WeightEntry> get weightHistory => List.unmodifiable(_weightHistory);
   List<MealItem> get todayMeals =>
@@ -190,9 +193,19 @@ class AppController extends ChangeNotifier {
     if (bootstrap.session != null && bootstrap.userData != null) {
       _session = bootstrap.session;
       _applyUserData(bootstrap.userData!, notify: false);
-      _stage = bootstrap.session!.onboardingCompleted
-          ? AppStage.home
-          : AppStage.onboarding;
+      switch (bootstrap.session!.status) {
+        case UserStatus.active:
+          _stage = AppStage.home;
+          break;
+        case UserStatus.generatingPlan:
+        case UserStatus.planFailed:
+          _stage = AppStage.generatingPlan;
+          break;
+        case UserStatus.pendingOnboarding:
+        default:
+          _stage = AppStage.onboarding;
+          break;
+      }
     } else {
       _resetUserState();
       _stage = AppStage.intro;
@@ -207,8 +220,10 @@ class AppController extends ChangeNotifier {
 
     if (_stage == AppStage.home) {
       _refreshInsightsBackground();
-      await _loadTodayLogs();
-      await _loadTokenTransactions();
+      await Future.wait([
+        _loadTodayLogs(),
+        _loadTokenTransactions(),
+      ]);
       unawaited(_initializeHomeNotifications());
     }
   }
@@ -522,14 +537,17 @@ class AppController extends ChangeNotifier {
       _session = AppUserSession(
         userId: session.userId,
         email: session.email,
-        onboardingCompleted: true,
+        status: UserStatus.generatingPlan,
       );
       _applyUserData(userData, notify: false);
       _currentTab = 0;
-      _showPostOnboardingOffer = true;
-      _stage = AppStage.home;
+      _showPostOnboardingOffer = false;
+      _stage = AppStage.generatingPlan;
       notifyListeners();
       _refreshInsightsBackground();
+      
+      // Simulate plan generation in background
+      unawaited(_simulatePlanGeneration());
       return null;
     } catch (e, st) {
       debugPrint('finishOnboarding error: $e\n$st');
@@ -537,8 +555,35 @@ class AppController extends ChangeNotifier {
     }
   }
 
-  Future<void> generateAiMealPlan() async {
-    if (_mealPlanGenerating || !profile.hasMealPlan) return;
+  Future<void> _simulatePlanGeneration() async {
+    await Future.delayed(const Duration(seconds: 4)); // mock AI generation time
+    final session = _session;
+    if (session == null) return;
+    
+    // Once plan is generated, user status becomes active
+    _session = AppUserSession(
+      userId: session.userId,
+      email: session.email,
+      status: UserStatus.active,
+    );
+    _stage = AppStage.home;
+    _showPostOnboardingOffer = true;
+    notifyListeners();
+  }
+
+  Future<void> saveOnboardingStep(int step, Map<String, dynamic> data) async {
+    // Mock API call to save onboarding step
+    await Future.delayed(const Duration(milliseconds: 300));
+    _onboardingProgress = OnboardingProgress(
+      currentStep: step,
+      completedSteps: [..._onboardingProgress.completedSteps, step].toSet().toList(),
+      isCompleted: false,
+    );
+    notifyListeners();
+  }
+
+  Future<bool> generateAiMealPlan() async {
+    if (_mealPlanGenerating || !profile.hasMealPlan) return false;
     _mealPlanGenerating = true;
     notifyListeners();
     final tpl = await _aiService.generateMealPlan(profile);
@@ -548,10 +593,11 @@ class AppController extends ChangeNotifier {
     }
     _mealPlanGenerating = false;
     notifyListeners();
+    return tpl.isNotEmpty;
   }
 
-  Future<void> generateAiWorkoutPlan() async {
-    if (_workoutPlanGenerating || !profile.hasWorkoutPlan) return;
+  Future<bool> generateAiWorkoutPlan() async {
+    if (_workoutPlanGenerating || !profile.hasWorkoutPlan) return false;
     _workoutPlanGenerating = true;
     notifyListeners();
     final tpl = await _aiService.generateWorkoutPlan(profile);
@@ -561,6 +607,7 @@ class AppController extends ChangeNotifier {
     }
     _workoutPlanGenerating = false;
     notifyListeners();
+    return tpl.isNotEmpty;
   }
 
   Future<void> refreshInsights() async {
@@ -598,9 +645,26 @@ class AppController extends ChangeNotifier {
       _spendTokens(type == CoachType.wellness
           ? TokenCosts.basicAiChat
           : TokenCosts.advancedCoachAnswer);
+
+      String displayReply = reply;
+      if (reply.contains('---ADJUSTMENT---')) {
+        final parts = reply.split('---ADJUSTMENT---');
+        displayReply = parts[0].trim();
+        try {
+          final jsonStr = parts[1].trim();
+          final data = jsonDecode(jsonStr) as Map<String, dynamic>;
+          final reason = data['reason'] as String?;
+          if (reason != null && reason.isNotEmpty) {
+            await NotificationService.showMealAdjusted('AI: $reason');
+          }
+        } catch (e) {
+          debugPrint('Failed to parse adjustment: $e');
+        }
+      }
+
       _chatHistories[type] = [
         ..._chatHistories[type]!,
-        ChatMessage(text: reply, isUser: false),
+        ChatMessage(text: displayReply, isUser: false),
       ];
     } catch (_) {
       _chatHistories[type] = [
@@ -645,11 +709,28 @@ class AppController extends ChangeNotifier {
     final session = _session;
     if (session == null) return 'Phiên đăng nhập không hợp lệ.';
     try {
+      final goalChanged = _profile.goal != updatedProfile.goal ||
+                          _profile.weightKg != updatedProfile.weightKg ||
+                          _profile.heightCm != updatedProfile.heightCm ||
+                          _profile.activityLevel != updatedProfile.activityLevel;
+      
       final userData = await _repository.saveOnboardingProfile(
         userId: session.userId,
         profile: updatedProfile,
       );
       _applyUserData(userData, notify: true);
+      
+      if (goalChanged) {
+        _session = AppUserSession(
+          userId: session.userId,
+          email: session.email,
+          status: UserStatus.generatingPlan,
+        );
+        _stage = AppStage.generatingPlan;
+        notifyListeners();
+        unawaited(_simulatePlanGeneration());
+      }
+      
       return null;
     } catch (e) {
       return 'Không thể lưu thông tin.';
@@ -829,9 +910,19 @@ class AppController extends ChangeNotifier {
     _session = result.session;
     _applyUserData(result.userData, notify: false);
     _currentTab = 0;
-    _stage = result.session.onboardingCompleted
-        ? AppStage.home
-        : AppStage.onboarding;
+    switch (result.session.status) {
+      case UserStatus.active:
+        _stage = AppStage.home;
+        break;
+      case UserStatus.generatingPlan:
+      case UserStatus.planFailed:
+        _stage = AppStage.generatingPlan;
+        break;
+      case UserStatus.pendingOnboarding:
+      default:
+        _stage = AppStage.onboarding;
+        break;
+    }
     notifyListeners();
     unawaited(_loadTokenTransactions());
   }

@@ -2796,7 +2796,13 @@ class _MealPlanScreenState extends State<MealPlanScreen>
       if (c.profile.hasMealPlan &&
           !c.hasMealAiPlan &&
           !c.isMealPlanGenerating) {
-        c.generateAiMealPlan();
+        c.generateAiMealPlan().then((success) {
+          if (!success && mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Không thể tạo kế hoạch lúc này, vui lòng thử lại sau.')),
+            );
+          }
+        });
       }
     });
   }
@@ -2903,7 +2909,14 @@ class _MealPlanScreenState extends State<MealPlanScreen>
                   IconButton(
                     icon: const Icon(Icons.refresh_rounded),
                     tooltip: 'Tạo lại bằng AI',
-                    onPressed: () => controller.generateAiMealPlan(),
+                    onPressed: () => () async {
+                      final success = await controller.generateAiMealPlan();
+                      if (!success && context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Không thể tạo kế hoạch lúc này, vui lòng thử lại sau.')),
+                        );
+                      }
+                    }(),
                   ),
               ],
             ),
@@ -2933,7 +2946,14 @@ class _MealPlanScreenState extends State<MealPlanScreen>
                 OutlinedButton.icon(
                   onPressed: controller.isMealPlanGenerating
                       ? null
-                      : () => controller.generateAiMealPlan(),
+                      : () => () async {
+                      final success = await controller.generateAiMealPlan();
+                      if (!success && context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Không thể tạo kế hoạch lúc này, vui lòng thử lại sau.')),
+                        );
+                      }
+                    }(),
                   style: OutlinedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(
                         horizontal: 14, vertical: 10),
