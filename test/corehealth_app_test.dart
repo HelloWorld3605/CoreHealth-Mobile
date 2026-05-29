@@ -115,7 +115,7 @@ class _MemoryRepository implements AppRepository {
       session: const AppUserSession(
         userId: 'user-1',
         email: 'demo@corehealth.app',
-        onboardingCompleted: false,
+        status: UserStatus.pendingOnboarding,
       ),
       userData: _userData,
     );
@@ -159,7 +159,7 @@ class _MemoryRepository implements AppRepository {
       session: const AppUserSession(
         userId: 'user-1',
         email: 'demo@corehealth.app',
-        onboardingCompleted: true,
+        status: UserStatus.active,
       ),
       userData: _userData,
     );
@@ -171,7 +171,7 @@ class _MemoryRepository implements AppRepository {
       session: const AppUserSession(
         userId: 'user-1',
         email: 'demo@corehealth.app',
-        onboardingCompleted: true,
+        status: UserStatus.active,
       ),
       userData: _userData,
     );

@@ -13,7 +13,11 @@ class AiService {
   static const _groqApiKey1 = String.fromEnvironment('GROQ_API_KEY');
   static const _groqApiKey2 = String.fromEnvironment('GROQ_API_KEY_2');
   static const _groqApiKey3 = String.fromEnvironment('GROQ_API_KEY_3');
-  List<String> get _groqKeys => [_groqApiKey1, _groqApiKey2, _groqApiKey3].where((k) => k.isNotEmpty).toList();
+  static const _groqApiKey4 = String.fromEnvironment('GROQ_API_KEY_4');
+  static const _groqApiKey5 = String.fromEnvironment('GROQ_API_KEY_5');
+  static const _groqApiKey6 = String.fromEnvironment('GROQ_API_KEY_6');
+  static const _groqApiKey7 = String.fromEnvironment('GROQ_API_KEY_7');
+  List<String> get _groqKeys => [_groqApiKey1, _groqApiKey2, _groqApiKey3, _groqApiKey4, _groqApiKey5, _groqApiKey6, _groqApiKey7].where((k) => k.isNotEmpty).toList();
   static const _groqBaseUrl = 'https://api.groq.com/openai';
   static const _groqModel = 'llama-3.3-70b-versatile';
 
@@ -23,6 +27,30 @@ class AiService {
   List<String> get _beeknoeeKeys => [_beeknoeeApiKey1, _beeknoeeApiKey2, _beeknoeeApiKey3].where((k) => k.isNotEmpty).toList();
   static const _beeknoeeBaseUrl = 'https://platform.beeknoee.com';
   static const _beeknoeeModel = 'gpt-4o-mini';
+
+  static const _shineshopApiKey1 = String.fromEnvironment('SHINESHOP_API_KEY');
+  static const _shineshopApiKey2 = String.fromEnvironment('SHINESHOP_API_KEY_2');
+  static const _shineshopApiKey3 = String.fromEnvironment('SHINESHOP_API_KEY_3');
+  static const _shineshopApiKey4 = String.fromEnvironment('SHINESHOP_API_KEY_4');
+  static const _shineshopApiKey5 = String.fromEnvironment('SHINESHOP_API_KEY_5');
+  static const _shineshopApiKey6 = String.fromEnvironment('SHINESHOP_API_KEY_6');
+  static const _shineshopApiKey7 = String.fromEnvironment('SHINESHOP_API_KEY_7');
+  static const _shineshopApiKey8 = String.fromEnvironment('SHINESHOP_API_KEY_8');
+  static const _shineshopApiKey9 = String.fromEnvironment('SHINESHOP_API_KEY_9');
+  static const _shineshopApiKey10 = String.fromEnvironment('SHINESHOP_API_KEY_10');
+  static const _shineshopApiKey11 = String.fromEnvironment('SHINESHOP_API_KEY_11');
+  static const _shineshopApiKey12 = String.fromEnvironment('SHINESHOP_API_KEY_12');
+  List<String> get _shineshopKeys => [
+        _shineshopApiKey1, _shineshopApiKey2, _shineshopApiKey3, _shineshopApiKey4,
+        _shineshopApiKey5, _shineshopApiKey6, _shineshopApiKey7, _shineshopApiKey8,
+        _shineshopApiKey9, _shineshopApiKey10, _shineshopApiKey11, _shineshopApiKey12
+      ].where((k) => k.isNotEmpty).toList();
+  static const _shineshopBaseUrl = String.fromEnvironment('SHINESHOP_BASE_URL', defaultValue: 'https://api.shineshop.dev');
+  static const _shineshopModel = String.fromEnvironment('SHINESHOP_MODEL', defaultValue: 'kr/minimax-m2.5');
+
+  static const _opencodeFreeBaseUrl = String.fromEnvironment('OPENCODE_FREE_BASE_URL', defaultValue: 'https://openrouter.ai/api');
+  static const _opencodeFreeModel = String.fromEnvironment('OPENCODE_FREE_MODEL', defaultValue: 'openrouter/free');
+  static const _opencodeFreeApiKey = String.fromEnvironment('OPENCODE_FREE_API_KEY');
 
   static const _goLlmApiKey = String.fromEnvironment('GOLLM_API_KEY');
   static const _goLlmBaseUrl = 'https://api.gollm.cloud';
@@ -155,6 +183,31 @@ class AiService {
       }
     }
 
+    // 3. Fallback 2: ShineShop
+    final shineshopKeys = _shineshopKeys;
+    for (int i = 0; i < shineshopKeys.length; i++) {
+      try {
+        final messages = <Map<String, String>>[];
+        messages.add({'role': 'system', 'content': system});
+        if (historyMessages != null) {
+          messages.addAll(historyMessages);
+        }
+        messages.add({'role': 'user', 'content': prompt});
+
+        final text = await _invokeOpenAiCompatible(
+          baseUrl: _shineshopBaseUrl,
+          apiKey: shineshopKeys[i],
+          model: _shineshopModel,
+          messages: messages,
+          maxTokens: maxTokens,
+          useSlashCompletions: true,
+        );
+        if (text.isNotEmpty) return text;
+      } catch (e) {
+        debugPrint('[CoreHealth AI] ShineShop key ${i+1} failed: $e.');
+      }
+    }
+
     // 3. Fallback 2: GoLLM
     if (_goLlmApiKey.isNotEmpty) {
       try {
@@ -199,9 +252,8 @@ class AiService {
       }
     }
 
-    // 5. Fallback 4: OpenRouter Free (Local Proxy)
-    final localUrls = ['http://10.0.2.2:20128', 'http://localhost:20128'];
-    for (final url in localUrls) {
+    // 5. Fallback 4: OpenRouter Free (OpenCode Free)
+    if (_opencodeFreeApiKey.isNotEmpty) {
       try {
         final messages = <Map<String, String>>[];
         messages.add({'role': 'system', 'content': system});
@@ -211,16 +263,16 @@ class AiService {
         messages.add({'role': 'user', 'content': prompt});
 
         final text = await _invokeOpenAiCompatible(
-          baseUrl: url,
-          apiKey: '', 
-          model: 'oc/minimax-m2.5-free',
+          baseUrl: _opencodeFreeBaseUrl,
+          apiKey: _opencodeFreeApiKey,
+          model: _opencodeFreeModel,
           messages: messages,
           maxTokens: maxTokens,
           useSlashCompletions: true,
         );
         if (text.isNotEmpty) return text;
       } catch (e) {
-        debugPrint('[CoreHealth AI] OpenRouterFree at $url failed: $e');
+        debugPrint('[CoreHealth AI] OpenCode Free failed: $e');
       }
     }
 

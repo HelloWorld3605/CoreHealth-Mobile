@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -563,7 +564,11 @@ class _ChatPanel extends StatelessWidget {
                     if (index == history.length) {
                       return const _TypingIndicator();
                     }
-                    return _MessageBubble(message: history[index]);
+                    return _MessageBubble(
+                      sessionId: session?.id,
+                      msgIndex: index,
+                      message: history[index],
+                    );
                   },
                 ),
         ),
@@ -741,14 +746,43 @@ class _ChatInput extends StatelessWidget {
 }
 
 class _MessageBubble extends StatelessWidget {
-  const _MessageBubble({required this.message});
+  const _MessageBubble({
+    required this.sessionId,
+    required this.msgIndex,
+    required this.message,
+  });
 
+  final String? sessionId;
+  final int msgIndex;
   final ChatMessage message;
+
+  (String, Map<String, dynamic>?) _parseAdjustment(String text) {
+    if (!text.contains('---ADJUSTMENT---')) {
+      return (text, null);
+    }
+    final parts = text.split('---ADJUSTMENT---');
+    final displayText = parts[0].trim();
+    try {
+      final jsonStr = parts.length > 1 ? parts[1].trim() : '';
+      if (jsonStr.isEmpty) return (displayText, null);
+      
+      final Map<String, dynamic> data = jsonDecode(jsonStr);
+      return (displayText, data);
+    } catch (e) {
+      return (displayText, null);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final isUser = message.isUser;
     final tt = Theme.of(context).textTheme;
+    
+    final (displayText, adjustment) = _parseAdjustment(message.text);
+    final hasApplied = message.text.contains('✅ Đã áp dụng thay đổi');
+    final hasDeclined = message.text.contains('💼 Đã giữ nguyên kế hoạch');
+    final isResolved = hasApplied || hasDeclined;
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Row(
@@ -773,28 +807,182 @@ class _MessageBubble extends StatelessWidget {
             const SizedBox(width: 8),
           ],
           Flexible(
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 12),
-              decoration: BoxDecoration(
-                color: isUser ? AppPalette.emerald : AppPalette.surface,
-                borderRadius: BorderRadius.only(
-                  topLeft: const Radius.circular(20),
-                  topRight: const Radius.circular(20),
-                  bottomLeft: Radius.circular(isUser ? 20 : 6),
-                  bottomRight: Radius.circular(isUser ? 6 : 20),
+            child: Column(
+              crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: isUser ? AppPalette.emerald : AppPalette.surface,
+                    borderRadius: BorderRadius.only(
+                      topLeft: const Radius.circular(20),
+                      topRight: const Radius.circular(20),
+                      bottomLeft: Radius.circular(isUser ? 20 : 6),
+                      bottomRight: Radius.circular(isUser ? 6 : 20),
+                    ),
+                    border:
+                        isUser ? null : Border.all(color: AppPalette.borderLight),
+                  ),
+                  child: Text(
+                    displayText,
+                    style: tt.bodyMedium?.copyWith(
+                      color: isUser ? AppPalette.text : AppPalette.text,
+                      fontWeight: isUser ? FontWeight.w700 : FontWeight.w500,
+                    ),
+                  ),
                 ),
-                border:
-                    isUser ? null : Border.all(color: AppPalette.borderLight),
-              ),
-              child: Text(
-                message.text,
-                style: tt.bodyMedium?.copyWith(
-                  color: isUser ? AppPalette.text : AppPalette.text,
-                  fontWeight: isUser ? FontWeight.w700 : FontWeight.w500,
-                ),
-              ),
+                if (adjustment != null) ...[
+                  const SizedBox(height: 8),
+                  _AdjustmentCard(
+                    sessionId: sessionId,
+                    msgIndex: msgIndex,
+                    adjustment: adjustment,
+                    isResolved: isResolved,
+                  ),
+                ],
+              ],
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AdjustmentCard extends StatelessWidget {
+  const _AdjustmentCard({
+    required this.sessionId,
+    required this.msgIndex,
+    required this.adjustment,
+    required this.isResolved,
+  });
+
+  final String? sessionId;
+  final int msgIndex;
+  final Map<String, dynamic> adjustment;
+  final bool isResolved;
+
+  @override
+  Widget build(BuildContext context) {
+    final tt = Theme.of(context).textTheme;
+    final reason = adjustment['reason'] as String? ?? 'AI Đề xuất thay đổi kế hoạch của bạn.';
+    final mealChanges = adjustment['mealChanges'] as List? ?? adjustment['changes'] as List? ?? [];
+    final workoutChanges = adjustment['workoutChanges'] as List? ?? [];
+    
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppPalette.surfaceElevated,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppPalette.borderLight),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: AppPalette.emeraldSoft,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.auto_fix_high_rounded, color: AppPalette.emeraldDeep, size: 16),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Đề xuất điều chỉnh',
+                  style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w900, color: AppPalette.emeraldDeep),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            reason,
+            style: tt.bodyMedium?.copyWith(color: AppPalette.text, fontWeight: FontWeight.w700),
+          ),
+          if (mealChanges.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Text('Dinh dưỡng (🍽️):', style: tt.bodySmall?.copyWith(color: AppPalette.mutedText, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 4),
+            ...mealChanges.map((c) {
+              final m = c as Map<String, dynamic>;
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('• ', style: TextStyle(color: AppPalette.emerald)),
+                    Expanded(
+                      child: Text(
+                        '${m['slot'] ?? ''}: ${m['name'] ?? ''} (${m['kcal'] ?? 0} kcal)',
+                        style: tt.bodySmall?.copyWith(color: AppPalette.text),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }),
+          ],
+          if (workoutChanges.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Text('Tập luyện (💪):', style: tt.bodySmall?.copyWith(color: AppPalette.mutedText, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 4),
+            ...workoutChanges.map((c) {
+              final m = c as Map<String, dynamic>;
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('• ', style: TextStyle(color: AppPalette.emerald)),
+                    Expanded(
+                      child: Text(
+                        '${m['exercise'] ?? ''} (${m['duration'] ?? 15} phút)',
+                        style: tt.bodySmall?.copyWith(color: AppPalette.text),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }),
+          ],
+          if (!isResolved && sessionId != null) ...[
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: FilledButton(
+                    onPressed: () {
+                      CoreHealthScope.of(context).applyAiAdjustment(sessionId!, msgIndex, adjustment);
+                    },
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppPalette.emerald,
+                      foregroundColor: AppPalette.text,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                    child: const Text('Áp dụng', style: TextStyle(fontWeight: FontWeight.w900)),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () {
+                      CoreHealthScope.of(context).declineAiAdjustment(sessionId!, msgIndex);
+                    },
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppPalette.text,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                    child: const Text('Giữ nguyên', style: TextStyle(fontWeight: FontWeight.w900)),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );

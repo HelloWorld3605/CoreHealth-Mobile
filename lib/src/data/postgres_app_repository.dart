@@ -247,7 +247,9 @@ class PostgresAppRepository implements AppRepository {
       final profile = await _profileForNewVerifiedUser(
           tx, userId, displayName, pending['referral_code']?.toString());
       await _upsertProfile(tx,
-          userId: userId, profile: profile, status: UserStatus.pendingOnboarding);
+          userId: userId,
+          profile: profile,
+          status: UserStatus.pendingOnboarding);
       await tx.execute(
         Sql.named('''
           insert into token_transactions(id, user_id, amount, price_k, description, created_at)
@@ -284,7 +286,9 @@ class PostgresAppRepository implements AppRepository {
 
     return AuthResult(
       session: AppUserSession(
-          userId: userId, email: normalizedEmail, status: UserStatus.pendingOnboarding),
+          userId: userId,
+          email: normalizedEmail,
+          status: UserStatus.pendingOnboarding),
       userData: await _readUserData(db, userId),
     );
   }
@@ -835,6 +839,232 @@ class PostgresAppRepository implements AppRepository {
     );
   }
 
+  // Architecture V2: AI Synchronization Methods
+
+  @override
+  Future<void> savePlanGeneration({required String userId, required PlanGeneration generation}) async {
+    final db = await _open();
+    await db.execute(
+      Sql.named('''
+        insert into plan_generations (id, user_id, version, goal_snapshot, created_at)
+        values (@id, @userId, @version, @goalSnapshot, @createdAt)
+      '''),
+      parameters: {
+        'id': generation.id,
+        'userId': userId,
+        'version': generation.version,
+        'goalSnapshot': generation.goalSnapshot,
+        'createdAt': generation.createdAt,
+      },
+    );
+  }
+
+  @override
+  Future<PlanGeneration?> getCurrentGeneration({required String userId}) async {
+    final db = await _open();
+    final rows = await db.execute(
+      Sql.named('select * from plan_generations where user_id = @userId order by version desc limit 1'),
+      parameters: {'userId': userId},
+    );
+    if (rows.isEmpty) return null;
+    final rowMap = rows.first.toColumnMap();
+    // In database, created_at comes out as DateTime.
+    // DailyProgress and PlanGeneration expect strings in some cases, but PlanGeneration.fromJson handles it.
+    // Let's ensure the map has string for created_at if fromJson uses DateTime.parse
+    if (rowMap['created_at'] is DateTime) {
+      rowMap['created_at'] = (rowMap['created_at'] as DateTime).toIso8601String();
+    }
+    return PlanGeneration.fromJson(rowMap);
+  }
+
+  @override
+  Future<void> saveMealPlan({required String userId, required String generationId, required int dayIndex, required MealPlanDay plan}) async {
+    final db = await _open();
+    final planJson = jsonEncode(plan.toJson());
+    await db.execute(
+      Sql.named('''
+        insert into meal_plans (id, generation_id, user_id, day_index, plan_json, created_at)
+        values (@id, @generationId, @userId, @dayIndex, @planJson, now())
+        on conflict (generation_id, day_index) do update set
+          plan_json = excluded.plan_json
+      '''),
+      parameters: {
+        'id': '${generationId}_meal_$dayIndex',
+        'generationId': generationId,
+        'userId': userId,
+        'dayIndex': dayIndex,
+        'planJson': planJson,
+      },
+    );
+  }
+
+  @override
+  Future<MealPlanDay?> getMealPlan({required String userId, required int version, required int dayIndex}) async {
+    final db = await _open();
+    final rows = await db.execute(
+      Sql.named('''
+        select m.plan_json from meal_plans m
+        join plan_generations g on m.generation_id = g.id
+        where m.user_id = @userId and g.version = @version and m.day_index = @dayIndex
+        limit 1
+      '''),
+      parameters: {'userId': userId, 'version': version, 'dayIndex': dayIndex},
+    );
+    if (rows.isEmpty) return null;
+    final planMap = jsonDecode(rows.first.toColumnMap()['plan_json'] as String) as Map<String, dynamic>;
+    return MealPlanDay.fromJson(planMap);
+  }
+
+  @override
+  Future<void> saveWorkoutPlan({required String userId, required String generationId, required int dayIndex, required WorkoutDay plan}) async {
+    final db = await _open();
+    final planJson = jsonEncode(plan.toJson());
+    await db.execute(
+      Sql.named('''
+        insert into workout_plans (id, generation_id, user_id, day_index, plan_json, created_at)
+        values (@id, @generationId, @userId, @dayIndex, @planJson, now())
+        on conflict (generation_id, day_index) do update set
+          plan_json = excluded.plan_json
+      '''),
+      parameters: {
+        'id': '${generationId}_workout_$dayIndex',
+        'generationId': generationId,
+        'userId': userId,
+        'dayIndex': dayIndex,
+        'planJson': planJson,
+      },
+    );
+  }
+
+  @override
+  Future<WorkoutDay?> getWorkoutPlan({required String userId, required int version, required int dayIndex}) async {
+    final db = await _open();
+    final rows = await db.execute(
+      Sql.named('''
+        select w.plan_json from workout_plans w
+        join plan_generations g on w.generation_id = g.id
+        where w.user_id = @userId and g.version = @version and w.day_index = @dayIndex
+        limit 1
+      '''),
+      parameters: {'userId': userId, 'version': version, 'dayIndex': dayIndex},
+    );
+    if (rows.isEmpty) return null;
+    final planMap = jsonDecode(rows.first.toColumnMap()['plan_json'] as String) as Map<String, dynamic>;
+    return WorkoutDay.fromJson(planMap);
+  }
+
+  @override
+  Future<void> saveShoppingItems({required String userId, required List<ShoppingItem> items}) async {
+    final db = await _open();
+    await db.runTx((tx) async {
+      await tx.execute(
+        Sql.named('delete from shopping_items where user_id = @userId'),
+        parameters: {'userId': userId},
+      );
+      for (final item in items) {
+        await tx.execute(
+          Sql.named('''
+            insert into shopping_items (id, user_id, item_name, quantity, unit, is_checked, source_day, created_at)
+            values (@id, @userId, @itemName, @quantity, @unit, @isChecked, @sourceDay, @createdAt)
+          '''),
+          parameters: {
+            'id': item.id,
+            'userId': userId,
+            'itemName': item.itemName,
+            'quantity': item.quantity,
+            'unit': item.unit,
+            'isChecked': item.isChecked,
+            'sourceDay': item.sourceDay,
+            'createdAt': item.createdAt,
+          },
+        );
+      }
+    });
+  }
+
+  @override
+  Future<List<ShoppingItem>> getShoppingItems({required String userId}) async {
+    final db = await _open();
+    final rows = await db.execute(
+      Sql.named('select * from shopping_items where user_id = @userId order by source_day asc, item_name asc'),
+      parameters: {'userId': userId},
+    );
+    return rows.map((r) {
+      final m = r.toColumnMap();
+      if (m['created_at'] is DateTime) {
+        m['created_at'] = (m['created_at'] as DateTime).toIso8601String();
+      }
+      return ShoppingItem.fromJson(m);
+    }).toList();
+  }
+
+  @override
+  Future<void> saveDailyProgress({required String userId, required DailyProgress progress}) async {
+    final db = await _open();
+    await db.execute(
+      Sql.named('''
+        insert into daily_progress (id, user_id, date, meal_status, workout_status, calories_consumed, weight, water_intake, steps, sleep_hours, completion_score, created_at)
+        values (@id, @userId, @date, @mealStatus, @workoutStatus, @caloriesConsumed, @weight, @waterIntake, @steps, @sleepHours, @completionScore, @createdAt)
+        on conflict (user_id, date) do update set
+          meal_status = excluded.meal_status,
+          workout_status = excluded.workout_status,
+          calories_consumed = excluded.calories_consumed,
+          weight = excluded.weight,
+          water_intake = excluded.water_intake,
+          steps = excluded.steps,
+          sleep_hours = excluded.sleep_hours,
+          completion_score = excluded.completion_score
+      '''),
+      parameters: {
+        'id': progress.id,
+        'userId': userId,
+        'date': progress.date,
+        'mealStatus': progress.mealStatus.name,
+        'workoutStatus': progress.workoutStatus.name,
+        'caloriesConsumed': progress.caloriesConsumed,
+        'weight': progress.weight,
+        'waterIntake': progress.waterIntake,
+        'steps': progress.steps,
+        'sleepHours': progress.sleepHours,
+        'completionScore': progress.completionScore,
+        'createdAt': progress.createdAt,
+      },
+    );
+  }
+
+  @override
+  Future<DailyProgress?> getDailyProgress({required String userId, required String date}) async {
+    final db = await _open();
+    final rows = await db.execute(
+      Sql.named('select * from daily_progress where user_id = @userId and date = @date limit 1'),
+      parameters: {'userId': userId, 'date': date},
+    );
+    if (rows.isEmpty) return null;
+    final m = rows.first.toColumnMap();
+    if (m['created_at'] is DateTime) {
+      m['created_at'] = (m['created_at'] as DateTime).toIso8601String();
+    }
+    return DailyProgress.fromJson(m);
+  }
+
+  @override
+  Future<void> logAiEvent({required String userId, required AiEvent event}) async {
+    final db = await _open();
+    await db.execute(
+      Sql.named('''
+        insert into ai_events (id, user_id, event_type, payload, created_at)
+        values (@id, @userId, @eventType, @payload, @createdAt)
+      '''),
+      parameters: {
+        'id': event.id,
+        'userId': userId,
+        'eventType': event.eventType,
+        'payload': event.payload,
+        'createdAt': event.createdAt,
+      },
+    );
+  }
+
   Future<_UserAccount?> _readUserAccount(dynamic db, String userId) async {
     final rows = await db.execute(
         Sql.named('select * from users where id = @id limit 1'),
@@ -858,7 +1088,9 @@ class PostgresAppRepository implements AppRepository {
       final profile = _defaultProfileFor(
           account?.displayName ?? DemoData.initialProfile.name);
       await _upsertProfile(db,
-          userId: userId, profile: profile, status: UserStatus.pendingOnboarding);
+          userId: userId,
+          profile: profile,
+          status: UserStatus.pendingOnboarding);
       return _readProfileRow(db, userId);
     }
     return rows.first.toColumnMap();
@@ -1000,13 +1232,13 @@ class PostgresAppRepository implements AppRepository {
           dietary_restrictions_json, allergies_json, health_conditions_json, training_frequency, focus_areas_json,
           preferred_activities_json, meal_budget, cooking_time, nutrition_priorities_json, subscription_start_date,
           core_health_max_trial_expires_at, plan, subscription_months, token_balance, token_earned, token_spent,
-          referral_code, referred_by, onboarding_completed, updated_at
+          referral_code, referred_by, status, onboarding_completed, updated_at
         ) values (
           @userId, @name, @age, @gender, @heightCm, @weightKg, @targetWeightKg, @goal, @activityLevel, @schedule,
           @dietaryRestrictionsJson, @allergiesJson, @healthConditionsJson, @trainingFrequency, @focusAreasJson,
           @preferredActivitiesJson, @mealBudget, @cookingTime, @nutritionPrioritiesJson, @subscriptionStartDate,
           @coreHealthMaxTrialExpiresAt, @plan, @subscriptionMonths, @tokenBalance, @tokenEarned, @tokenSpent,
-          @referralCode, @referredBy, @status, now()
+          @referralCode, @referredBy, @status, @onboardingCompleted, now()
         )
         on conflict (user_id) do update set
           name = excluded.name,
@@ -1036,6 +1268,7 @@ class PostgresAppRepository implements AppRepository {
           token_spent = excluded.token_spent,
           referral_code = excluded.referral_code,
           referred_by = excluded.referred_by,
+          status = excluded.status,
           onboarding_completed = excluded.onboarding_completed,
           updated_at = now()
       '''),
@@ -1075,6 +1308,7 @@ class PostgresAppRepository implements AppRepository {
         'referralCode': profile.referralCode,
         'referredBy': profile.referredBy,
         'status': status.name,
+        'onboardingCompleted': status == UserStatus.active,
       };
 
   Future<bool> _emailExists(dynamic db, String email) async {
@@ -1370,7 +1604,9 @@ UserStatus _getUserStatus(Map<String, Object?> row) {
       orElse: () => UserStatus.pendingOnboarding,
     );
   }
-  return _parseBool(row['onboarding_completed']) ? UserStatus.active : UserStatus.pendingOnboarding;
+  return _parseBool(row['onboarding_completed'])
+      ? UserStatus.active
+      : UserStatus.pendingOnboarding;
 }
 
 String _normalizeEmail(String value) => value.trim().toLowerCase();
@@ -1499,10 +1735,12 @@ const _schemaStatements = [
     token_spent integer not null default 0,
     referral_code text not null default '',
     referred_by text not null default '',
+    status text not null default 'pendingOnboarding',
     onboarding_completed boolean not null default false,
     updated_at timestamp with time zone not null default now()
   )
   ''',
+  'alter table user_profiles add column if not exists status text not null default \'pendingOnboarding\'',
   'create unique index if not exists user_profiles_referral_code_idx on user_profiles(referral_code) where referral_code <> \'\'',
   '''
   create table if not exists user_settings (
@@ -1594,6 +1832,82 @@ const _schemaStatements = [
     ts bigint not null,
     history_json text not null,
     category text not null default 'General',
+    created_at timestamp with time zone not null default now()
+  )
+  ''',
+  'alter table user_profiles add column if not exists ai_plan_version integer not null default 1',
+  '''
+  create table if not exists schema_version (
+    version integer primary key,
+    updated_at timestamp with time zone not null default now()
+  )
+  ''',
+  '''
+  create table if not exists plan_generations (
+    id text primary key,
+    user_id text not null references users(id) on delete cascade,
+    version integer not null,
+    goal_snapshot text not null default '',
+    created_at timestamp with time zone not null default now()
+  )
+  ''',
+  '''
+  create table if not exists meal_plans (
+    id text primary key,
+    generation_id text not null references plan_generations(id) on delete cascade,
+    user_id text not null references users(id) on delete cascade,
+    day_index integer not null,
+    plan_json text not null,
+    created_at timestamp with time zone not null default now(),
+    unique(generation_id, day_index)
+  )
+  ''',
+  '''
+  create table if not exists workout_plans (
+    id text primary key,
+    generation_id text not null references plan_generations(id) on delete cascade,
+    user_id text not null references users(id) on delete cascade,
+    day_index integer not null,
+    plan_json text not null,
+    created_at timestamp with time zone not null default now(),
+    unique(generation_id, day_index)
+  )
+  ''',
+  '''
+  create table if not exists daily_progress (
+    id text primary key,
+    user_id text not null references users(id) on delete cascade,
+    date text not null,
+    meal_status text not null default 'not_started',
+    workout_status text not null default 'not_started',
+    calories_consumed integer not null default 0,
+    weight numeric not null default 0,
+    water_intake integer not null default 0,
+    steps integer not null default 0,
+    sleep_hours numeric not null default 0,
+    completion_score integer not null default 0,
+    created_at timestamp with time zone not null default now(),
+    unique(user_id, date)
+  )
+  ''',
+  '''
+  create table if not exists shopping_items (
+    id text primary key,
+    user_id text not null references users(id) on delete cascade,
+    item_name text not null,
+    quantity numeric not null default 0,
+    unit text not null,
+    is_checked boolean not null default false,
+    source_day integer not null,
+    created_at timestamp with time zone not null default now()
+  )
+  ''',
+  '''
+  create table if not exists ai_events (
+    id text primary key,
+    user_id text not null references users(id) on delete cascade,
+    event_type text not null,
+    payload text not null,
     created_at timestamp with time zone not null default now()
   )
   ''',

@@ -11,6 +11,8 @@ import 'models.dart';
 import 'services/ai_service.dart';
 import 'services/food_scan_service.dart';
 import 'services/notification_service.dart';
+import 'services/shopping_list_generator.dart';
+import 'services/ai_command_processor.dart';
 
 class AppController extends ChangeNotifier {
   AppController({required AppRepository repository})
@@ -53,8 +55,15 @@ class AppController extends ChangeNotifier {
   List<ChatSession> _chatSessions = const [];
   String? _activeChatSessionId;
 
-  List<MealPlanDay>? _aiMealTemplate; // 7-day AI rotation
-  List<WorkoutDay>? _aiWorkoutTemplate; // 7-day AI rotation
+  PlanGeneration? _currentGeneration;
+  MealPlanDay? _currentMealPlan;
+  WorkoutDay? _currentWorkoutPlan;
+  List<MealPlanDay> _generationMealPlans = const [];
+  List<WorkoutDay> _generationWorkoutPlans = const [];
+  List<ShoppingItem> _shoppingItems = const [];
+  DailyProgress? _todayProgress;
+  int _currentDayIndex = 1;
+
   bool _mealPlanGenerating = false;
   bool _workoutPlanGenerating = false;
 
@@ -74,8 +83,7 @@ class AppController extends ChangeNotifier {
   OnboardingProgress get onboardingProgress => _onboardingProgress;
   DemoProfile get profile => _profile;
   List<WeightEntry> get weightHistory => List.unmodifiable(_weightHistory);
-  List<MealItem> get todayMeals =>
-      mealPlan.isNotEmpty ? mealPlan.first.meals : DemoData.todayMeals;
+  List<MealItem> get todayMeals => _currentMealPlan?.meals ?? DemoData.todayMeals;
   List<OrderSummary> get orders => List.unmodifiable(_orders);
   List<Product> get cart => List.unmodifiable(_cart);
   List<TokenTransaction> get tokenTransactions =>
@@ -93,8 +101,16 @@ class AppController extends ChangeNotifier {
   bool get insightsLoading => _insightsLoading;
   bool get isMealPlanGenerating => _mealPlanGenerating;
   bool get isWorkoutPlanGenerating => _workoutPlanGenerating;
-  bool get hasMealAiPlan => _aiMealTemplate != null;
-  bool get hasWorkoutAiPlan => _aiWorkoutTemplate != null;
+  
+  PlanGeneration? get currentGeneration => _currentGeneration;
+  MealPlanDay? get currentMealPlan => _currentMealPlan;
+  WorkoutDay? get currentWorkoutPlan => _currentWorkoutPlan;
+  List<ShoppingItem> get shoppingItems => List.unmodifiable(_shoppingItems);
+  DailyProgress? get todayProgress => _todayProgress;
+  int get currentDayIndex => _currentDayIndex;
+
+  bool get hasMealAiPlan => _currentMealPlan != null;
+  bool get hasWorkoutAiPlan => _currentWorkoutPlan != null;
 
   List<ChatSession> get chatSessions => _chatSessions;
   String? get activeChatSessionId => _activeChatSessionId;
@@ -117,7 +133,7 @@ class AppController extends ChangeNotifier {
   /// Returns today's planned meals with calories adjusted for remaining slots.
   /// Slots already logged are marked as eaten; remaining ones get redistributed budget.
   List<({MealItem meal, MealLog? log})> get todayMealsWithLogs {
-    final planned = mealPlan.isNotEmpty ? mealPlan.first.meals : <MealItem>[];
+    final planned = _currentMealPlan?.meals ?? <MealItem>[];
     final logsBySlot = {for (final l in _todayMealLogs) l.slotLabel: l};
     return planned
         .map((meal) => (meal: meal, log: logsBySlot[meal.slotLabel]))
@@ -127,7 +143,7 @@ class AppController extends ChangeNotifier {
   /// Adjusted calories for remaining meals. Returns the same MealItem list
   /// but with calories redistributed based on what has already been eaten today.
   List<MealItem> get adjustedRemainingMeals {
-    final planned = mealPlan.isNotEmpty ? mealPlan.first.meals : <MealItem>[];
+    final planned = _currentMealPlan?.meals ?? <MealItem>[];
     final loggedSlots = _todayMealLogs.map((l) => l.slotLabel).toSet();
     final remaining =
         planned.where((m) => !loggedSlots.contains(m.slotLabel)).toList();
@@ -161,31 +177,13 @@ class AppController extends ChangeNotifier {
   bool isChatLoading(CoachType type) => _chatLoading[type] ?? false;
 
   List<MealPlanDay> get mealPlan {
-    final days = totalPlanDays.clamp(30, 180);
-    final tpl = _aiMealTemplate;
-    if (tpl != null && tpl.isNotEmpty) {
-      return List.generate(
-        days,
-        (i) => MealPlanDay(dayNumber: i + 1, meals: tpl[i % tpl.length].meals),
-      );
-    }
-    return DemoData.mealPlan(totalDays: days);
+    if (_generationMealPlans.isNotEmpty) return _generationMealPlans;
+    return DemoData.mealPlan(totalDays: totalPlanDays.clamp(30, 180));
   }
 
   List<WorkoutDay> get workoutPlan {
-    final days = totalPlanDays.clamp(30, 180);
-    final tpl = _aiWorkoutTemplate;
-    if (tpl != null && tpl.isNotEmpty) {
-      return List.generate(
-        days,
-        (i) => WorkoutDay(
-          dayNumber: i + 1,
-          focusVi: tpl[i % tpl.length].focusVi,
-          exercises: tpl[i % tpl.length].exercises,
-        ),
-      );
-    }
-    return DemoData.workoutPlan(totalDays: days);
+    if (_generationWorkoutPlans.isNotEmpty) return _generationWorkoutPlans;
+    return DemoData.workoutPlan(totalDays: totalPlanDays.clamp(30, 180));
   }
 
   Future<void> initialize() async {
@@ -195,15 +193,12 @@ class AppController extends ChangeNotifier {
       _applyUserData(bootstrap.userData!, notify: false);
       switch (bootstrap.session!.status) {
         case UserStatus.active:
+        case UserStatus.pendingOnboarding:
           _stage = AppStage.home;
           break;
         case UserStatus.generatingPlan:
         case UserStatus.planFailed:
           _stage = AppStage.generatingPlan;
-          break;
-        case UserStatus.pendingOnboarding:
-        default:
-          _stage = AppStage.onboarding;
           break;
       }
     } else {
@@ -223,9 +218,46 @@ class AppController extends ChangeNotifier {
       await Future.wait([
         _loadTodayLogs(),
         _loadTokenTransactions(),
+        _loadSyncData(),
       ]);
       unawaited(_initializeHomeNotifications());
     }
+  }
+
+  Future<void> _loadSyncData() async {
+    final userId = _session?.userId;
+    if (userId == null) return;
+
+    final startDate = _profile.subscriptionStartDate ?? DateTime.now();
+    final diff = DateTime.now().difference(startDate).inDays;
+    _currentDayIndex = diff >= 0 ? diff + 1 : 1;
+
+    _currentGeneration = await _repository.getCurrentGeneration(userId: userId);
+    if (_currentGeneration != null) {
+      final genVersion = _currentGeneration!.version;
+      
+      final meals = <MealPlanDay>[];
+      final workouts = <WorkoutDay>[];
+      for (int i = 1; i <= 30; i++) {
+        final m = await _repository.getMealPlan(userId: userId, version: genVersion, dayIndex: i);
+        if (m != null) meals.add(m);
+        final w = await _repository.getWorkoutPlan(userId: userId, version: genVersion, dayIndex: i);
+        if (w != null) workouts.add(w);
+      }
+      _generationMealPlans = meals;
+      _generationWorkoutPlans = workouts;
+      
+      _currentMealPlan = await _repository.getMealPlan(
+          userId: userId, version: genVersion, dayIndex: _currentDayIndex);
+      _currentWorkoutPlan = await _repository.getWorkoutPlan(
+          userId: userId, version: genVersion, dayIndex: _currentDayIndex);
+      _shoppingItems = await _repository.getShoppingItems(userId: userId);
+    }
+    
+    final dateStr = '${DateTime.now().year}-${DateTime.now().month.toString().padLeft(2, '0')}-${DateTime.now().day.toString().padLeft(2, '0')}';
+    _todayProgress = await _repository.getDailyProgress(userId: userId, date: dateStr);
+    
+    notifyListeners();
   }
 
   Future<void> _initializeHomeNotifications() async {
@@ -576,19 +608,58 @@ class AppController extends ChangeNotifier {
     await Future.delayed(const Duration(milliseconds: 300));
     _onboardingProgress = OnboardingProgress(
       currentStep: step,
-      completedSteps: [..._onboardingProgress.completedSteps, step].toSet().toList(),
+      completedSteps: <int>{..._onboardingProgress.completedSteps, step}.toList(),
       isCompleted: false,
     );
     notifyListeners();
   }
 
   Future<bool> generateAiMealPlan() async {
+    final userId = _session?.userId;
+    if (userId == null) return false;
     if (_mealPlanGenerating || !profile.hasMealPlan) return false;
     _mealPlanGenerating = true;
     notifyListeners();
+    
     final tpl = await _aiService.generateMealPlan(profile);
     if (tpl.isNotEmpty) {
-      _aiMealTemplate = tpl;
+      final version = (_currentGeneration?.version ?? 0) + 1;
+      final gen = PlanGeneration(
+        id: 'gen_${userId}_$version',
+        userId: userId,
+        version: version,
+        goalSnapshot: 'Goal: ${profile.goal.name}',
+        createdAt: DateTime.now(),
+      );
+      await _repository.savePlanGeneration(userId: userId, generation: gen);
+      
+      final allDays = <MealPlanDay>[];
+      for (int i = 0; i < 30; i++) {
+        final dayPlan = MealPlanDay(dayNumber: i + 1, meals: tpl[i % tpl.length].meals);
+        allDays.add(dayPlan);
+        await _repository.saveMealPlan(userId: userId, generationId: gen.id, dayIndex: i + 1, plan: dayPlan);
+      }
+      
+      if (_currentGeneration != null) {
+        for (int i = 0; i < 30; i++) {
+          final w = await _repository.getWorkoutPlan(userId: userId, version: _currentGeneration!.version, dayIndex: i + 1);
+          if (w != null) {
+            await _repository.saveWorkoutPlan(userId: userId, generationId: gen.id, dayIndex: i + 1, plan: w);
+          }
+        }
+      }
+      
+      _currentGeneration = gen;
+      _generationMealPlans = allDays;
+      if (_currentDayIndex >= 1 && _currentDayIndex <= 30) {
+        _currentMealPlan = allDays[_currentDayIndex - 1];
+        _currentWorkoutPlan = await _repository.getWorkoutPlan(userId: userId, version: gen.version, dayIndex: _currentDayIndex);
+      }
+      
+      final items = ShoppingListGenerator.generate(userId, allDays);
+      await _repository.saveShoppingItems(userId: userId, items: items);
+      _shoppingItems = items;
+      
       _spendTokens(TokenCosts.fullDayMealPlan);
     }
     _mealPlanGenerating = false;
@@ -597,12 +668,57 @@ class AppController extends ChangeNotifier {
   }
 
   Future<bool> generateAiWorkoutPlan() async {
+    final userId = _session?.userId;
+    if (userId == null) return false;
     if (_workoutPlanGenerating || !profile.hasWorkoutPlan) return false;
     _workoutPlanGenerating = true;
     notifyListeners();
+    
     final tpl = await _aiService.generateWorkoutPlan(profile);
     if (tpl.isNotEmpty) {
-      _aiWorkoutTemplate = tpl;
+      final version = (_currentGeneration?.version ?? 0) + 1;
+      final gen = PlanGeneration(
+        id: 'gen_${userId}_$version',
+        userId: userId,
+        version: version,
+        goalSnapshot: 'Goal: ${profile.goal.name}',
+        createdAt: DateTime.now(),
+      );
+      await _repository.savePlanGeneration(userId: userId, generation: gen);
+      
+      for (int i = 0; i < 30; i++) {
+        final dayPlan = WorkoutDay(
+          dayNumber: i + 1, 
+          focusVi: tpl[i % tpl.length].focusVi, 
+          exercises: tpl[i % tpl.length].exercises
+        );
+        await _repository.saveWorkoutPlan(userId: userId, generationId: gen.id, dayIndex: i + 1, plan: dayPlan);
+      }
+      
+      if (_currentGeneration != null) {
+        for (int i = 0; i < 30; i++) {
+          final m = await _repository.getMealPlan(userId: userId, version: _currentGeneration!.version, dayIndex: i + 1);
+          if (m != null) {
+            await _repository.saveMealPlan(userId: userId, generationId: gen.id, dayIndex: i + 1, plan: m);
+          }
+        }
+      }
+      
+      _currentGeneration = gen;
+      
+      // Load into lists
+      final workouts = <WorkoutDay>[];
+      for (int i = 1; i <= 30; i++) {
+        final w = await _repository.getWorkoutPlan(userId: userId, version: gen.version, dayIndex: i);
+        if (w != null) workouts.add(w);
+      }
+      _generationWorkoutPlans = workouts;
+      
+      if (_currentDayIndex >= 1 && _currentDayIndex <= 30) {
+        _currentWorkoutPlan = await _repository.getWorkoutPlan(userId: userId, version: gen.version, dayIndex: _currentDayIndex);
+        _currentMealPlan = await _repository.getMealPlan(userId: userId, version: gen.version, dayIndex: _currentDayIndex);
+      }
+      
       _spendTokens(TokenCosts.adaptiveWeeklyPlan);
     }
     _workoutPlanGenerating = false;
@@ -883,13 +999,16 @@ class AppController extends ChangeNotifier {
         userId: userId,
         dayNumber: dayNumber,
       );
-      // Show streak congratulation only when marking as done (not undoing).
       if (!wasCompleted) {
         await NotificationService.showWorkoutCompleted(
             data.completedWorkoutDays.length);
       }
       return data;
     });
+    
+    if (dayNumber == _currentDayIndex) {
+      logDailyProgress();
+    }
   }
 
   void toggleMealCompleted(int dayNumber) {
@@ -899,6 +1018,47 @@ class AppController extends ChangeNotifier {
         dayNumber: dayNumber,
       );
     });
+    
+    if (dayNumber == _currentDayIndex) {
+      logDailyProgress();
+    }
+  }
+
+  Future<void> logDailyProgress() async {
+    final userId = _session?.userId;
+    if (userId == null) return;
+    
+    final dateStr = '${DateTime.now().year}-${DateTime.now().month.toString().padLeft(2, '0')}-${DateTime.now().day.toString().padLeft(2, '0')}';
+    
+    final hasLoggedMeals = _todayMealLogs.isNotEmpty;
+    final mealStatus = hasLoggedMeals ? ProgressStatus.completed : ProgressStatus.not_started;
+    
+    final isWorkoutCompleted = _completedWorkoutDays.contains(_currentDayIndex);
+    final workoutStatus = isWorkoutCompleted ? ProgressStatus.completed : ProgressStatus.not_started;
+    
+    int eatenCal = 0;
+    for (final m in _todayMealLogs) {
+      eatenCal += m.calories;
+    }
+    
+    final progress = DailyProgress(
+      id: 'prog_${userId}_$dateStr',
+      userId: userId,
+      date: dateStr,
+      mealStatus: mealStatus,
+      workoutStatus: workoutStatus,
+      caloriesConsumed: eatenCal,
+      weight: profile.weightKg,
+      waterIntake: _todayProgress?.waterIntake ?? 0,
+      steps: _todayProgress?.steps ?? 0,
+      sleepHours: _todayProgress?.sleepHours ?? 0,
+      completionScore: (mealStatus == ProgressStatus.completed && workoutStatus == ProgressStatus.completed) ? 100 : 50,
+      createdAt: DateTime.now(),
+    );
+    
+    await _repository.saveDailyProgress(userId: userId, progress: progress);
+    _todayProgress = progress;
+    notifyListeners();
   }
 
   void _refreshInsightsBackground() {
@@ -912,15 +1072,12 @@ class AppController extends ChangeNotifier {
     _currentTab = 0;
     switch (result.session.status) {
       case UserStatus.active:
+      case UserStatus.pendingOnboarding:
         _stage = AppStage.home;
         break;
       case UserStatus.generatingPlan:
       case UserStatus.planFailed:
         _stage = AppStage.generatingPlan;
-        break;
-      case UserStatus.pendingOnboarding:
-      default:
-        _stage = AppStage.onboarding;
         break;
     }
     notifyListeners();
@@ -950,8 +1107,11 @@ class AppController extends ChangeNotifier {
         oldProfile.mealBudget != _profile.mealBudget ||
         oldProfile.cookingTime != _profile.cookingTime ||
         oldProfile.trainingFrequency != _profile.trainingFrequency) {
-      _aiMealTemplate = null;
-      _aiWorkoutTemplate = null;
+      _currentGeneration = null;
+      _currentMealPlan = null;
+      _currentWorkoutPlan = null;
+      _generationMealPlans = const [];
+      _generationWorkoutPlans = const [];
       _aiService.invalidateAllPlanCaches();
     }
     _loadChatSessions();
@@ -978,8 +1138,11 @@ class AppController extends ChangeNotifier {
     _activeChatSessionId = null;
     _pendingPasswordResetEmail = null;
     _devPasswordResetOtp = null;
-    _aiMealTemplate = null;
-    _aiWorkoutTemplate = null;
+    _currentGeneration = null;
+    _currentMealPlan = null;
+    _currentWorkoutPlan = null;
+    _generationMealPlans = const [];
+    _generationWorkoutPlans = const [];
     _todayMealLogs = const [];
   }
 
@@ -1232,6 +1395,91 @@ class AppController extends ChangeNotifier {
     } finally {
       _chatLoading[CoachType.wellness] = false;
       notifyListeners();
+    }
+  }
+
+  void declineAiAdjustment(String sessionId, int msgIndex) {
+    final existingIndex = _chatSessions.indexWhere((s) => s.id == sessionId);
+    if (existingIndex == -1) return;
+    
+    final session = _chatSessions[existingIndex];
+    if (msgIndex < 0 || msgIndex >= session.history.length) return;
+    
+    final oldMsg = session.history[msgIndex];
+    final parts = oldMsg.text.split('---ADJUSTMENT---');
+    if (parts.length < 2) return;
+    
+    final newText = '${parts[0].trim()}\n\n💼 Đã giữ nguyên kế hoạch hiện tại.';
+    
+    final newHistory = List<ChatMessage>.from(session.history);
+    newHistory[msgIndex] = oldMsg.copyWith(text: newText);
+    
+    final newSession = ChatSession(
+      id: session.id,
+      title: session.title,
+      ts: session.ts,
+      history: newHistory,
+      category: session.category,
+    );
+    
+    _chatSessions = [
+      ..._chatSessions.sublist(0, existingIndex),
+      newSession,
+      ..._chatSessions.sublist(existingIndex + 1),
+    ];
+    notifyListeners();
+    final userId = _session?.userId;
+    if (userId != null) {
+      _repository.saveChatSession(userId: userId, session: newSession).ignore();
+    }
+  }
+
+  Future<void> applyAiAdjustment(String sessionId, int msgIndex, Map<String, dynamic> adjustment) async {
+    final existingIndex = _chatSessions.indexWhere((s) => s.id == sessionId);
+    if (existingIndex == -1) return;
+    
+    final session = _chatSessions[existingIndex];
+    if (msgIndex < 0 || msgIndex >= session.history.length) return;
+    
+    final oldMsg = session.history[msgIndex];
+    final parts = oldMsg.text.split('---ADJUSTMENT---');
+    if (parts.length < 2) return;
+    
+    final userId = _session?.userId;
+    if (userId != null && _currentGeneration != null) {
+      await AiCommandProcessor.processCommand(
+        userId: userId,
+        adjustment: adjustment,
+        currentGeneration: _currentGeneration!,
+        repository: _repository,
+        currentDayIndex: _currentDayIndex,
+      );
+      
+      // Reload everything
+      await _loadSyncData();
+    }
+    
+    final newText = '${parts[0].trim()}\n\n✅ Đã áp dụng thay đổi vào kế hoạch của bạn.';
+    
+    final newHistory = List<ChatMessage>.from(session.history);
+    newHistory[msgIndex] = oldMsg.copyWith(text: newText);
+    
+    final newSession = ChatSession(
+      id: session.id,
+      title: session.title,
+      ts: session.ts,
+      history: newHistory,
+      category: session.category,
+    );
+    
+    _chatSessions = [
+      ..._chatSessions.sublist(0, existingIndex),
+      newSession,
+      ..._chatSessions.sublist(existingIndex + 1),
+    ];
+    notifyListeners();
+    if (userId != null) {
+      _repository.saveChatSession(userId: userId, session: newSession).ignore();
     }
   }
 

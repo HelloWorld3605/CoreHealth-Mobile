@@ -92,6 +92,24 @@ abstract class AppRepository {
       {required String userId, required ChatSession session});
   Future<void> deleteChatSession(
       {required String userId, required String sessionId});
+
+  // Architecture V2: AI Synchronization
+  Future<void> savePlanGeneration({required String userId, required PlanGeneration generation});
+  Future<PlanGeneration?> getCurrentGeneration({required String userId});
+  
+  Future<void> saveMealPlan({required String userId, required String generationId, required int dayIndex, required MealPlanDay plan});
+  Future<MealPlanDay?> getMealPlan({required String userId, required int version, required int dayIndex});
+  
+  Future<void> saveWorkoutPlan({required String userId, required String generationId, required int dayIndex, required WorkoutDay plan});
+  Future<WorkoutDay?> getWorkoutPlan({required String userId, required int version, required int dayIndex});
+
+  Future<void> saveShoppingItems({required String userId, required List<ShoppingItem> items});
+  Future<List<ShoppingItem>> getShoppingItems({required String userId});
+
+  Future<void> saveDailyProgress({required String userId, required DailyProgress progress});
+  Future<DailyProgress?> getDailyProgress({required String userId, required String date});
+
+  Future<void> logAiEvent({required String userId, required AiEvent event});
 }
 
 class AppBootstrapData {

@@ -92,6 +92,7 @@ class DemoProfile {
     this.referredBy = '',
     this.subscriptionStartDate,
     this.coreHealthMaxTrialExpiresAt,
+    this.aiPlanVersion = 1,
   });
 
   final String name;
@@ -132,6 +133,8 @@ class DemoProfile {
   /// New-user CoreHealth Max trial. This is tracked separately from paid plan
   /// expiry so a user can buy Meal/Workout while still keeping Max trial access.
   final DateTime? coreHealthMaxTrialExpiresAt;
+
+  final int aiPlanVersion;
 
   double get bmi {
     if (heightCm <= 0 || weightKg <= 0) return 0.0;
@@ -265,6 +268,7 @@ class DemoProfile {
     int? tokenSpent,
     String? referralCode,
     String? referredBy,
+    int? aiPlanVersion,
     // Use Object? sentinel so callers can explicitly pass null to clear the date.
     Object? subscriptionStartDate = _keep,
     Object? coreHealthMaxTrialExpiresAt = _keep,
@@ -301,6 +305,7 @@ class DemoProfile {
       coreHealthMaxTrialExpiresAt: coreHealthMaxTrialExpiresAt == _keep
           ? this.coreHealthMaxTrialExpiresAt
           : coreHealthMaxTrialExpiresAt as DateTime?,
+      aiPlanVersion: aiPlanVersion ?? this.aiPlanVersion,
     );
   }
 }
@@ -471,6 +476,16 @@ class ChatMessage {
 
   final String text;
   final bool isUser;
+
+  ChatMessage copyWith({
+    String? text,
+    bool? isUser,
+  }) {
+    return ChatMessage(
+      text: text ?? this.text,
+      isUser: isUser ?? this.isUser,
+    );
+  }
 }
 
 class ChatSession {
@@ -538,6 +553,33 @@ class MealItem {
   final int fat;
   final String imageUrl;
   final List<String> ingredients;
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'nameVi': nameVi,
+        'slotLabel': slotLabel,
+        'calories': calories,
+        'protein': protein,
+        'carbs': carbs,
+        'fat': fat,
+        'imageUrl': imageUrl,
+        'ingredients': ingredients,
+      };
+
+  factory MealItem.fromJson(Map<String, dynamic> json) => MealItem(
+        id: json['id'] as String? ?? '',
+        nameVi: json['nameVi'] as String? ?? '',
+        slotLabel: json['slotLabel'] as String? ?? '',
+        calories: json['calories'] as int? ?? 0,
+        protein: json['protein'] as int? ?? 0,
+        carbs: json['carbs'] as int? ?? 0,
+        fat: json['fat'] as int? ?? 0,
+        imageUrl: json['imageUrl'] as String? ?? '',
+        ingredients: (json['ingredients'] as List<dynamic>?)
+                ?.map((e) => e.toString())
+                .toList() ??
+            [],
+      );
 }
 
 class MealPlanDay {
@@ -553,6 +595,19 @@ class MealPlanDay {
   int get totalProtein => meals.fold(0, (sum, meal) => sum + meal.protein);
   int get totalCarbs => meals.fold(0, (sum, meal) => sum + meal.carbs);
   int get totalFat => meals.fold(0, (sum, meal) => sum + meal.fat);
+
+  Map<String, dynamic> toJson() => {
+        'dayNumber': dayNumber,
+        'meals': meals.map((m) => m.toJson()).toList(),
+      };
+
+  factory MealPlanDay.fromJson(Map<String, dynamic> json) => MealPlanDay(
+        dayNumber: json['dayNumber'] as int? ?? 1,
+        meals: (json['meals'] as List<dynamic>?)
+                ?.map((e) => MealItem.fromJson(e as Map<String, dynamic>))
+                .toList() ??
+            [],
+      );
 }
 
 class WorkoutExercise {
@@ -573,6 +628,27 @@ class WorkoutExercise {
   final String? reps;
   final int? durationMinutes;
   final int caloriesBurned;
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'nameVi': nameVi,
+        'description': description,
+        if (sets != null) 'sets': sets,
+        if (reps != null) 'reps': reps,
+        if (durationMinutes != null) 'durationMinutes': durationMinutes,
+        'caloriesBurned': caloriesBurned,
+      };
+
+  factory WorkoutExercise.fromJson(Map<String, dynamic> json) =>
+      WorkoutExercise(
+        id: json['id'] as String? ?? '',
+        nameVi: json['nameVi'] as String? ?? '',
+        description: json['description'] as String? ?? '',
+        sets: json['sets'] as int?,
+        reps: json['reps'] as String?,
+        durationMinutes: json['durationMinutes'] as int?,
+        caloriesBurned: json['caloriesBurned'] as int? ?? 0,
+      );
 }
 
 class WorkoutDay {
@@ -593,6 +669,21 @@ class WorkoutDay {
 
   int get totalCalories =>
       exercises.fold(0, (sum, item) => sum + item.caloriesBurned);
+
+  Map<String, dynamic> toJson() => {
+        'dayNumber': dayNumber,
+        'focusVi': focusVi,
+        'exercises': exercises.map((e) => e.toJson()).toList(),
+      };
+
+  factory WorkoutDay.fromJson(Map<String, dynamic> json) => WorkoutDay(
+        dayNumber: json['dayNumber'] as int? ?? 1,
+        focusVi: json['focusVi'] as String? ?? '',
+        exercises: (json['exercises'] as List<dynamic>?)
+                ?.map((e) => WorkoutExercise.fromJson(e as Map<String, dynamic>))
+                .toList() ??
+            [],
+      );
 }
 
 class Product {
@@ -846,4 +937,190 @@ class AiPlan {
     required this.createdAt,
     required this.updatedAt,
   });
+}
+
+// ---------------------------------------------------------------------------
+// Architecture V2: AI Synchronization Models
+// ---------------------------------------------------------------------------
+
+enum ProgressStatus { not_started, partial, completed }
+
+class DailyProgress {
+  const DailyProgress({
+    required this.id,
+    required this.userId,
+    required this.date,
+    required this.mealStatus,
+    required this.workoutStatus,
+    required this.caloriesConsumed,
+    required this.weight,
+    required this.waterIntake,
+    required this.steps,
+    required this.sleepHours,
+    required this.completionScore,
+    required this.createdAt,
+  });
+
+  final String id;
+  final String userId;
+  final String date;
+  final ProgressStatus mealStatus;
+  final ProgressStatus workoutStatus;
+  final int caloriesConsumed;
+  final double weight;
+  final int waterIntake;
+  final int steps;
+  final double sleepHours;
+  final int completionScore;
+  final DateTime createdAt;
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'user_id': userId,
+        'date': date,
+        'meal_status': mealStatus.name,
+        'workout_status': workoutStatus.name,
+        'calories_consumed': caloriesConsumed,
+        'weight': weight,
+        'water_intake': waterIntake,
+        'steps': steps,
+        'sleep_hours': sleepHours,
+        'completion_score': completionScore,
+        'created_at': createdAt.toIso8601String(),
+      };
+
+  factory DailyProgress.fromJson(Map<String, dynamic> json) => DailyProgress(
+        id: json['id'] as String? ?? '',
+        userId: json['user_id'] as String? ?? '',
+        date: json['date'] as String? ?? '',
+        mealStatus: ProgressStatus.values.firstWhere(
+            (e) => e.name == json['meal_status'],
+            orElse: () => ProgressStatus.not_started),
+        workoutStatus: ProgressStatus.values.firstWhere(
+            (e) => e.name == json['workout_status'],
+            orElse: () => ProgressStatus.not_started),
+        caloriesConsumed: json['calories_consumed'] as int? ?? 0,
+        weight: (json['weight'] as num?)?.toDouble() ?? 0.0,
+        waterIntake: json['water_intake'] as int? ?? 0,
+        steps: json['steps'] as int? ?? 0,
+        sleepHours: (json['sleep_hours'] as num?)?.toDouble() ?? 0.0,
+        completionScore: json['completion_score'] as int? ?? 0,
+        createdAt: json['created_at'] != null
+            ? DateTime.parse(json['created_at'])
+            : DateTime.now(),
+      );
+}
+
+class ShoppingItem {
+  const ShoppingItem({
+    required this.id,
+    required this.userId,
+    required this.itemName,
+    required this.quantity,
+    required this.unit,
+    required this.isChecked,
+    required this.sourceDay,
+    required this.createdAt,
+  });
+
+  final String id;
+  final String userId;
+  final String itemName;
+  final double quantity;
+  final String unit;
+  final bool isChecked;
+  final int sourceDay;
+  final DateTime createdAt;
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'user_id': userId,
+        'item_name': itemName,
+        'quantity': quantity,
+        'unit': unit,
+        'is_checked': isChecked ? 1 : 0,
+        'source_day': sourceDay,
+        'created_at': createdAt.toIso8601String(),
+      };
+
+  factory ShoppingItem.fromJson(Map<String, dynamic> json) => ShoppingItem(
+        id: json['id'] as String? ?? '',
+        userId: json['user_id'] as String? ?? '',
+        itemName: json['item_name'] as String? ?? '',
+        quantity: (json['quantity'] as num?)?.toDouble() ?? 0.0,
+        unit: json['unit'] as String? ?? '',
+        isChecked: (json['is_checked'] == 1 || json['is_checked'] == true),
+        sourceDay: json['source_day'] as int? ?? 1,
+        createdAt: json['created_at'] != null
+            ? DateTime.parse(json['created_at'])
+            : DateTime.now(),
+      );
+}
+
+class PlanGeneration {
+  const PlanGeneration({
+    required this.id,
+    required this.userId,
+    required this.version,
+    required this.goalSnapshot,
+    required this.createdAt,
+  });
+
+  final String id;
+  final String userId;
+  final int version;
+  final String goalSnapshot;
+  final DateTime createdAt;
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'user_id': userId,
+        'version': version,
+        'goal_snapshot': goalSnapshot,
+        'created_at': createdAt.toIso8601String(),
+      };
+
+  factory PlanGeneration.fromJson(Map<String, dynamic> json) => PlanGeneration(
+        id: json['id'] as String? ?? '',
+        userId: json['user_id'] as String? ?? '',
+        version: json['version'] as int? ?? 1,
+        goalSnapshot: json['goal_snapshot'] as String? ?? '',
+        createdAt: json['created_at'] != null
+            ? DateTime.parse(json['created_at'])
+            : DateTime.now(),
+      );
+}
+
+class AiEvent {
+  const AiEvent({
+    required this.id,
+    required this.userId,
+    required this.eventType,
+    required this.payload,
+    required this.createdAt,
+  });
+
+  final String id;
+  final String userId;
+  final String eventType;
+  final String payload;
+  final DateTime createdAt;
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'user_id': userId,
+        'event_type': eventType,
+        'payload': payload,
+        'created_at': createdAt.toIso8601String(),
+      };
+
+  factory AiEvent.fromJson(Map<String, dynamic> json) => AiEvent(
+        id: json['id'] as String? ?? '',
+        userId: json['user_id'] as String? ?? '',
+        eventType: json['event_type'] as String? ?? '',
+        payload: json['payload'] as String? ?? '',
+        createdAt: json['created_at'] != null
+            ? DateTime.parse(json['created_at'])
+            : DateTime.now(),
+      );
 }

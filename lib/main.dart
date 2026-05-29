@@ -43,7 +43,12 @@ class _CoreHealthAppLoaderState extends State<CoreHealthAppLoader> {
   Future<void> _initApp() async {
     final repository = await _createRepository();
     final controller = AppController(repository: repository);
-    unawaited(controller.initialize());
+    unawaited(
+      controller.initialize().catchError((Object error, StackTrace stackTrace) {
+        debugPrint('App initialization failed: $error');
+        debugPrintStack(stackTrace: stackTrace);
+      }),
+    );
     if (mounted) {
       setState(() {
         _controller = controller;
@@ -99,7 +104,7 @@ Future<AppRepository> _createRepository() async {
     password: password,
   );
   try {
-    await postgres.init();
+    await postgres.init().timeout(const Duration(seconds: 3));
     return postgres;
   } catch (error, stackTrace) {
     if (kReleaseMode) rethrow;

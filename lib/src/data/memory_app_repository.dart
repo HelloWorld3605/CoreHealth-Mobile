@@ -716,6 +716,63 @@ class MemoryAppRepository implements AppRepository {
     _chatSessionsByUser[userId]?.removeWhere((s) => s.id == sessionId);
   }
 
+  // Architecture V2: AI Synchronization Methods (In-memory stubs)
+
+  @override
+  Future<void> savePlanGeneration({required String userId, required PlanGeneration generation}) async {
+    // Stub
+  }
+
+  @override
+  Future<PlanGeneration?> getCurrentGeneration({required String userId}) async {
+    return null; // Stub
+  }
+
+  @override
+  Future<void> saveMealPlan({required String userId, required String generationId, required int dayIndex, required MealPlanDay plan}) async {
+    // Stub
+  }
+
+  @override
+  Future<MealPlanDay?> getMealPlan({required String userId, required int version, required int dayIndex}) async {
+    return null; // Stub
+  }
+
+  @override
+  Future<void> saveWorkoutPlan({required String userId, required String generationId, required int dayIndex, required WorkoutDay plan}) async {
+    // Stub
+  }
+
+  @override
+  Future<WorkoutDay?> getWorkoutPlan({required String userId, required int version, required int dayIndex}) async {
+    return null; // Stub
+  }
+
+  @override
+  Future<void> saveShoppingItems({required String userId, required List<ShoppingItem> items}) async {
+    // Stub
+  }
+
+  @override
+  Future<List<ShoppingItem>> getShoppingItems({required String userId}) async {
+    return []; // Stub
+  }
+
+  @override
+  Future<void> saveDailyProgress({required String userId, required DailyProgress progress}) async {
+    // Stub
+  }
+
+  @override
+  Future<DailyProgress?> getDailyProgress({required String userId, required String date}) async {
+    return null; // Stub
+  }
+
+  @override
+  Future<void> logAiEvent({required String userId, required AiEvent event}) async {
+    // Stub
+  }
+
   PersistedUserData _requireUserData(String userId) {
     final data = _dataByUserId[userId];
     if (data == null) {

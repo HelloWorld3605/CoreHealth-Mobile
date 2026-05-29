@@ -13,21 +13,6 @@ class RagService {
     required DemoProfile profile,
     required CoachType coachType,
   }) {
-    final (coachName, topicScope) = switch (coachType) {
-      CoachType.nutrition => (
-          'AI Meal Coach',
-          'dinh dưỡng, chế độ ăn, thực phẩm, calo, macro, bữa ăn',
-        ),
-      CoachType.workout => (
-          'AI Workout Coach',
-          'tập luyện, bài tập, lịch tập, cơ bắp, cardio, phục hồi',
-        ),
-      CoachType.wellness => (
-          'AI Assistant sức khỏe',
-          'sức khỏe tổng thể, giấc ngủ, stress, thói quen lành mạnh, cân nặng',
-        ),
-    };
-
     final preferTopics = _topicsForCoach(coachType, profile);
     final results = FitnessKnowledge.search(
       userQuery,
@@ -41,18 +26,12 @@ class RagService {
         .toList();
 
     final buffer = StringBuffer();
-    buffer.writeln('=== Vai trò ===');
-    buffer.writeln(
-        'Bạn là $coachName của CoreHealth. KHÔNG phải Claude hay AI khác. '
-        'Chỉ trả lời về $topicScope. '
-        'Nếu câu hỏi ngoài phạm vi, từ chối lịch sự.');
     if (relevant.isNotEmpty) {
-      buffer.writeln();
-      buffer.writeln('=== Kiến thức chuyên môn ===');
-      for (final chunk in relevant) {
-        buffer.writeln('[${chunk.topic.toUpperCase()}]');
-        buffer.writeln(chunk.content.trim());
-        buffer.writeln();
+      for (var i = 0; i < relevant.length; i++) {
+        buffer.write(relevant[i].content.trim());
+        if (i < relevant.length - 1) {
+          buffer.write('\n---\n');
+        }
       }
     }
     return buffer.toString().trim();

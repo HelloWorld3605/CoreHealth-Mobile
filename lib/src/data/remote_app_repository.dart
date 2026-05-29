@@ -392,6 +392,63 @@ class RemoteAppRepository implements AppRepository {
     throw UnimplementedError();
   }
 
+  // Architecture V2: AI Synchronization Methods (Stubs for remote)
+
+  @override
+  Future<void> savePlanGeneration({required String userId, required PlanGeneration generation}) async {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<PlanGeneration?> getCurrentGeneration({required String userId}) async {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<void> saveMealPlan({required String userId, required String generationId, required int dayIndex, required MealPlanDay plan}) async {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<MealPlanDay?> getMealPlan({required String userId, required int version, required int dayIndex}) async {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<void> saveWorkoutPlan({required String userId, required String generationId, required int dayIndex, required WorkoutDay plan}) async {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<WorkoutDay?> getWorkoutPlan({required String userId, required int version, required int dayIndex}) async {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<void> saveShoppingItems({required String userId, required List<ShoppingItem> items}) async {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<List<ShoppingItem>> getShoppingItems({required String userId}) async {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<void> saveDailyProgress({required String userId, required DailyProgress progress}) async {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<DailyProgress?> getDailyProgress({required String userId, required String date}) async {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<void> logAiEvent({required String userId, required AiEvent event}) async {
+    throw UnimplementedError();
+  }
+
   Future<AuthResult> _auth(String path, Map<String, Object?> body) async {
     final json = await _request('POST', path, body, false);
     _token = json['token'] as String?;
