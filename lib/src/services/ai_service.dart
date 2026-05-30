@@ -5,22 +5,22 @@ import 'package:http/http.dart' as http;
 
 import '../demo_data.dart';
 import '../models.dart';
+import 'beeknoee_service.dart';
 import 'gemini_service.dart';
+import 'groq_service.dart';
+import 'opencode_free_service.dart';
 import 'rag_service.dart';
+import 'shineshop_service.dart';
 
 class AiService {
-  // API keys are injected at build time via --dart-define (see .env file)
-  static const _groqApiKey = String.fromEnvironment('GROQ_API_KEY');
-  static const _groqBaseUrl = 'https://api.groq.com/openai';
-  static const _groqModel = 'llama-3.3-70b-versatile';
-
-  static const _beeknoeeApiKey = String.fromEnvironment('BEEKNOEE_API_KEY');
-  static const _beeknoeeBaseUrl = 'https://platform.beeknoee.com';
-  static const _beeknoeeModel = 'qwen-3-235b-a22b-instruct-2507';
-
-  static const _goLlmApiKey = String.fromEnvironment('GOLLM_API_KEY');
-  static const _goLlmBaseUrl = 'https://api.gollm.cloud';
-  static const _goLlmModel = 'gpt-4.1';
+  // AI Services
+  final _groq = GroqService();
+  final _beeknoee = BeeknoeeService();
+  final _shineshop = ShineShopService();
+  final _gemini = GeminiService();
+  final _openCodeFree = OpenCodeFreeService();
+  
+  final _rag = RagService();
 
   // Cycle qua các ảnh có sẵn cho bữa ăn AI-generated
   static const _mealImages = [
@@ -37,161 +37,74 @@ class AiService {
   final Map<String, List<MealPlanDay>> _mealPlanCache = {};
   final Map<String, List<WorkoutDay>> _workoutPlanCache = {};
 
-  final _gemini = GeminiService();
-  final _rag = RagService();
-
   bool get hasApiKey =>
-      _groqApiKey.isNotEmpty ||
-      _beeknoeeApiKey.isNotEmpty ||
-      _goLlmApiKey.isNotEmpty ||
-      _gemini.isAvailable;
+      _groq.isAvailable ||
+      _beeknoee.isAvailable ||
+      _shineshop.isAvailable ||
+      _gemini.isAvailable ||
+      _openCodeFree.isAvailable;
 
-  /// Helper for calling Open AI compatible chat completions endpoints.
-  Future<String> _invokeOpenAiCompatible({
-    required String baseUrl,
-    required String apiKey,
-    required String model,
-    required List<Map<String, String>> messages,
-    required int maxTokens,
-    required bool useSlashCompletions,
-  }) async {
-    final path = useSlashCompletions ? '/v1/chat/completions' : '/chat/completions';
-    final url = Uri.parse('$baseUrl$path');
-
-    final body = {
-      'model': model,
-      'messages': messages,
-      'max_tokens': maxTokens,
-    };
-
-    final headers = {
-      'Content-Type': 'application/json',
-      'Authorization': 'Bearer $apiKey',
-      'User-Agent': 'CoreHealth/1.0',
-    };
-
-    final response = await http.post(
-      url,
-      headers: headers,
-      body: jsonEncode(body),
-    ).timeout(const Duration(seconds: 30));
-
-    if (response.statusCode == 429) {
-      throw const _RateLimitException();
-    }
-    if (response.statusCode != 200) {
-      throw Exception('HTTP ${response.statusCode}: ${response.body}');
-    }
-
-    final data = jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
-    final choices = data['choices'] as List?;
-    if (choices == null || choices.isEmpty) {
-      return '';
-    }
-    final message = choices.first['message'] as Map<String, dynamic>?;
-    if (message == null) {
-      return '';
-    }
-    final text = message['content'] as String? ?? '';
-    return text.trim();
-  }
-
-  /// AI Chat Completions with standard fallback logic: Groq -> Beeknoee -> GoLLM
+  /// AI Chat Completions with 5-tier fallback logic and key rotation
   Future<String> _callChatCompletions({
     required String system,
     required String prompt,
     required int maxTokens,
     List<Map<String, String>>? historyMessages,
   }) async {
-    // 1. Primary: Groq
-    if (_groqApiKey.isNotEmpty) {
-      try {
-        final messages = <Map<String, String>>[];
-        messages.add({'role': 'system', 'content': system});
-        if (historyMessages != null) {
-          messages.addAll(historyMessages);
-        }
-        messages.add({'role': 'user', 'content': prompt});
+    final messages = <Map<String, String>>[];
+    messages.add({'role': 'system', 'content': system});
+    if (historyMessages != null) {
+      messages.addAll(historyMessages);
+    }
+    messages.add({'role': 'user', 'content': prompt});
 
-        final text = await _invokeOpenAiCompatible(
-          baseUrl: _groqBaseUrl,
-          apiKey: _groqApiKey,
-          model: _groqModel,
-          messages: messages,
-          maxTokens: maxTokens,
-          useSlashCompletions: true,
-        );
+    // 1. Primary: Groq (Rotate 7 keys)
+    if (_groq.isAvailable) {
+      try {
+        final text = await _groq.chatCompletions(messages: messages, maxTokens: maxTokens);
         if (text.isNotEmpty) return text;
       } catch (e) {
         debugPrint('[CoreHealth AI] Groq completions failed: $e. Trying Beeknoee...');
       }
     }
 
-    // 2. Fallback 1: Beeknoee
-    if (_beeknoeeApiKey.isNotEmpty) {
+    // 2. Fallback 1: Beeknoee (Rotate 3 keys)
+    if (_beeknoee.isAvailable) {
       try {
-        final messages = <Map<String, String>>[];
-        messages.add({'role': 'system', 'content': system});
-        if (historyMessages != null) {
-          messages.addAll(historyMessages);
-        }
-        messages.add({'role': 'user', 'content': prompt});
-
-        final text = await _invokeOpenAiCompatible(
-          baseUrl: _beeknoeeBaseUrl,
-          apiKey: _beeknoeeApiKey,
-          model: _beeknoeeModel,
-          messages: messages,
-          maxTokens: maxTokens,
-          useSlashCompletions: true,
-        );
+        final text = await _beeknoee.chatCompletions(messages: messages, maxTokens: maxTokens);
         if (text.isNotEmpty) return text;
       } catch (e) {
-        debugPrint('[CoreHealth AI] Beeknoee completions failed: $e. Trying GoLLM...');
+        debugPrint('[CoreHealth AI] Beeknoee completions failed: $e. Trying ShineShop...');
       }
     }
 
-    // 3. Fallback 2: GoLLM
-    if (_goLlmApiKey.isNotEmpty) {
+    // 3. Fallback 2: ShineShop (Rotate 12 keys)
+    if (_shineshop.isAvailable) {
       try {
-        final messages = <Map<String, String>>[];
-        messages.add({'role': 'system', 'content': system});
-        if (historyMessages != null) {
-          messages.addAll(historyMessages);
-        }
-        messages.add({'role': 'user', 'content': prompt});
-
-        final text = await _invokeOpenAiCompatible(
-          baseUrl: _goLlmBaseUrl,
-          apiKey: _goLlmApiKey,
-          model: _goLlmModel,
-          messages: messages,
-          maxTokens: maxTokens,
-          useSlashCompletions: false,
-        );
+        final text = await _shineshop.chatCompletions(messages: messages, maxTokens: maxTokens);
         if (text.isNotEmpty) return text;
       } catch (e) {
-        debugPrint('[CoreHealth AI] GoLLM completions failed: $e.');
+        debugPrint('[CoreHealth AI] ShineShop completions failed: $e. Trying Gemini...');
       }
     }
 
-    // 4. Fallback 3: Gemini
+    // 4. Fallback 3: Gemini (Rotate 10 keys)
     if (_gemini.isAvailable) {
       try {
-        final messages = <Map<String, String>>[];
-        messages.add({'role': 'system', 'content': system});
-        if (historyMessages != null) {
-          messages.addAll(historyMessages);
-        }
-        messages.add({'role': 'user', 'content': prompt});
-
-        final text = await _gemini.chatCompletions(
-          messages: messages,
-          maxTokens: maxTokens,
-        );
+        final text = await _gemini.chatCompletions(messages: messages, maxTokens: maxTokens);
         if (text.isNotEmpty) return text;
       } catch (e) {
-        debugPrint('[CoreHealth AI] Gemini completions failed: $e.');
+        debugPrint('[CoreHealth AI] Gemini completions failed: $e. Trying OpenCode Free...');
+      }
+    }
+
+    // 5. Fallback 4: OpenCode Free
+    if (_openCodeFree.isAvailable) {
+      try {
+        final text = await _openCodeFree.chatCompletions(messages: messages, maxTokens: maxTokens);
+        if (text.isNotEmpty) return text;
+      } catch (e) {
+        debugPrint('[CoreHealth AI] OpenCode Free completions failed: $e.');
       }
     }
 

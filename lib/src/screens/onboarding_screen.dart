@@ -2684,11 +2684,22 @@ class _GenderImageCard extends StatelessWidget {
               top: -78,
               left: -36,
               right: -36,
-              child: Image.asset(
-                image,
-                height: 292,
-                fit: BoxFit.contain,
-                filterQuality: FilterQuality.high,
+              child: ShaderMask(
+                shaderCallback: (Rect bounds) {
+                  return const LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Colors.black, Colors.transparent],
+                    stops: [0.65, 1.0],
+                  ).createShader(bounds);
+                },
+                blendMode: BlendMode.dstIn,
+                child: Image.asset(
+                  image,
+                  height: 292,
+                  fit: BoxFit.contain,
+                  filterQuality: FilterQuality.high,
+                ),
               ),
             ),
             if (selected)

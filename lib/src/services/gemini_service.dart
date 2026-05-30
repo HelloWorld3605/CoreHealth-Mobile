@@ -14,6 +14,8 @@ class GeminiService {
     String.fromEnvironment('GEMINI_API_KEY_6'),
     String.fromEnvironment('GEMINI_API_KEY_7'),
     String.fromEnvironment('GEMINI_API_KEY_8'),
+    String.fromEnvironment('GEMINI_API_KEY_9'),
+    String.fromEnvironment('GEMINI_API_KEY_10'),
   ];
 
   static const _baseUrl = 'https://generativelanguage.googleapis.com/v1beta/openai';
