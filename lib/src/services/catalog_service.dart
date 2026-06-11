@@ -33,9 +33,28 @@ class CatalogService {
     return jsonDecode(utf8.decode(res.bodyBytes));
   }
 
+  Future<void> _post(String path, [Map<String, Object?>? body]) async {
+    final res = await http
+        .post(
+          Uri.parse('${EnvironmentConfig.apiBaseUrl}$path'),
+          headers: await _headers(),
+          body: jsonEncode(body ?? const {}),
+        )
+        .timeout(const Duration(seconds: 20));
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      throw Exception('HTTP ${res.statusCode}');
+    }
+  }
+
   List<Map<String, dynamic>> _asList(dynamic v) => v is List
       ? v.map((e) => (e as Map).cast<String, dynamic>()).toList()
       : const [];
+
+  // --- Mutations (persist user actions to BE) ---
+  Future<void> hideFavorite(String id) => _post('/me/favorites/hide', {'id': id});
+  Future<void> toggleHabit(String id) => _post('/me/habits/$id/toggle');
+  Future<void> createHabit(String name) =>
+      _post('/me/habits', {'name': name, 'icon': '🎯', 'color': 'text-emerald-400'});
 
   // GET /api/shop/products -> { products: [...] }
   Future<List<Map<String, dynamic>>> products() async {

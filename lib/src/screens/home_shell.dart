@@ -4841,8 +4841,9 @@ class _ShopHeroCarouselState extends State<_ShopHeroCarousel> {
 
   List<Product> _getMealSuggestedProducts() {
     final controller = widget.controller;
+    final catalog = controller.products;
     final mealPlan = controller.mealPlan;
-    if (mealPlan.isEmpty) return DemoData.products.take(5).toList();
+    if (mealPlan.isEmpty) return catalog.take(5).toList();
 
     final todayMeals = mealPlan.first.meals;
     final allIngredients = todayMeals
@@ -4850,20 +4851,20 @@ class _ShopHeroCarouselState extends State<_ShopHeroCarousel> {
         .map((i) => i.toLowerCase())
         .toSet();
 
-    final matched = DemoData.products.where((product) {
+    final matched = catalog.where((product) {
       final name = product.nameVi.toLowerCase();
       return allIngredients
           .any((ing) => name.contains(ing) || ing.contains(name));
     }).toList();
 
     if (matched.length < 3) {
-      final hot = DemoData.products.where((p) => p.hot && !matched.contains(p));
+      final hot = catalog.where((p) => p.hot && !matched.contains(p));
       matched.addAll(hot.take(5 - matched.length));
     }
 
     return matched.isNotEmpty
         ? matched.take(5).toList()
-        : DemoData.products.take(5).toList();
+        : catalog.take(5).toList();
   }
 
   @override

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../services/catalog_service.dart';
 import '../theme.dart';
@@ -47,6 +49,7 @@ class _HabitsScreenState extends State<HabitsScreen> {
               week is List && week.isNotEmpty && week.last == true;
           final streak = (e['streak'] as num?)?.toInt() ?? 0;
           return <String, dynamic>{
+            'id': e['id'] ?? '',
             'name': e['name'] ?? '',
             'done': doneToday,
             'category': streak > 0 ? '🔥 $streak ngày' : 'Thói quen',
@@ -299,6 +302,10 @@ class _HabitsScreenState extends State<HabitsScreen> {
                         value: done,
                         activeColor: AppPalette.emeraldDeep,
                         onChanged: (val) {
+                          final id = habit['id']?.toString() ?? '';
+                          if (id.isNotEmpty) {
+                            unawaited(_catalog.toggleHabit(id));
+                          }
                           setState(() {
                             habit['done'] = val ?? false;
                           });
@@ -393,6 +400,7 @@ class _HabitsScreenState extends State<HabitsScreen> {
               onPressed: () {
                 final name = textController.text.trim();
                 if (name.isNotEmpty) {
+                  unawaited(_catalog.createHabit(name));
                   setState(() {
                     _customHabits.add({'name': name, 'done': false, 'category': selectedCat});
                   });

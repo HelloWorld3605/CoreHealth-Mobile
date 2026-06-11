@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../services/catalog_service.dart';
 import '../theme.dart';
@@ -60,6 +62,7 @@ class _FavoritesScreenState extends State<FavoritesScreen>
       List<Map<String, dynamic>> mapItems(String key) =>
           (groups[key] ?? const []).map((e) {
             return <String, dynamic>{
+              'id': e['id'] ?? '',
               'name': e['title'] ?? '',
               'image': e['image'] ?? '',
               'meta': e['meta'] ?? '',
@@ -141,6 +144,10 @@ class _FavoritesScreenState extends State<FavoritesScreen>
                           IconButton(
                             icon: const Icon(Icons.favorite_rounded, color: Colors.redAccent),
                             onPressed: () {
+                              final id = meal['id']?.toString() ?? '';
+                              if (id.isNotEmpty) {
+                                unawaited(_catalog.hideFavorite(id));
+                              }
                               setState(() {
                                 _favoriteMeals.removeAt(idx);
                               });
@@ -193,6 +200,10 @@ class _FavoritesScreenState extends State<FavoritesScreen>
                           IconButton(
                             icon: const Icon(Icons.favorite_rounded, color: Colors.redAccent),
                             onPressed: () {
+                              final id = ex['id']?.toString() ?? '';
+                              if (id.isNotEmpty) {
+                                unawaited(_catalog.hideFavorite(id));
+                              }
                               setState(() {
                                 _favoriteExercises.removeAt(idx);
                               });
