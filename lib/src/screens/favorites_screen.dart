@@ -17,36 +17,8 @@ class _FavoritesScreenState extends State<FavoritesScreen>
   late TabController _tabController;
   final CatalogService _catalog = CatalogService();
 
-  // Loaded from BE (/api/me/favorites) on open; lists below are offline fallback.
-  List<Map<String, dynamic>> _favoriteMeals = [
-    {
-      'name': 'Ức gà phi lê áp chảo chanh dây',
-      'calories': 380,
-      'protein': 38,
-      'image': 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400&h=300&fit=crop',
-    },
-    {
-      'name': 'Bún gạo lứt trộn thịt bò',
-      'calories': 410,
-      'protein': 28,
-      'image': 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400&h=300&fit=crop',
-    }
-  ];
-
-  List<Map<String, dynamic>> _favoriteExercises = [
-    {
-      'name': 'Hít đất (Push-up)',
-      'category': 'Ngực',
-      'difficulty': 'Cơ bản',
-      'image': 'https://images.unsplash.com/photo-1571019614242-c5c5dee9f50b?w=400&h=300&fit=crop',
-    },
-    {
-      'name': 'Plank (Giữ tạ bụng)',
-      'category': 'Core',
-      'difficulty': 'Trung bình',
-      'image': 'https://images.unsplash.com/photo-1581009146145-b5ef050c2e1e?w=400&h=300&fit=crop',
-    }
-  ];
+  List<Map<String, dynamic>> _favoriteMeals = const [];
+  List<Map<String, dynamic>> _favoriteExercises = const [];
 
   @override
   void initState() {
@@ -58,7 +30,7 @@ class _FavoritesScreenState extends State<FavoritesScreen>
   Future<void> _load() async {
     try {
       final groups = await _catalog.favorites();
-      if (!mounted || groups.isEmpty) return;
+      if (!mounted) return;
       List<Map<String, dynamic>> mapItems(String key) =>
           (groups[key] ?? const []).map((e) {
             return <String, dynamic>{
@@ -73,7 +45,12 @@ class _FavoritesScreenState extends State<FavoritesScreen>
         _favoriteExercises = mapItems('Exercises');
       });
     } catch (_) {
-      // Backend unreachable — keep the offline fallback lists.
+      if (mounted) {
+        setState(() {
+          _favoriteMeals = const [];
+          _favoriteExercises = const [];
+        });
+      }
     }
   }
 
@@ -87,7 +64,8 @@ class _FavoritesScreenState extends State<FavoritesScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Mục yêu thích', style: TextStyle(fontWeight: FontWeight.w800)),
+        title: const Text('Mục yêu thích',
+            style: TextStyle(fontWeight: FontWeight.w800)),
         bottom: TabBar(
           controller: _tabController,
           indicatorColor: AppPalette.emerald,
@@ -121,7 +99,11 @@ class _FavoritesScreenState extends State<FavoritesScreen>
                     return AppCard(
                       child: Row(
                         children: [
-                          RemoteImage(url: meal['image'], height: 64, width: 64, radius: 12),
+                          RemoteImage(
+                              url: meal['image'],
+                              height: 64,
+                              width: 64,
+                              radius: 12),
                           const SizedBox(width: 14),
                           Expanded(
                             child: Column(
@@ -129,7 +111,10 @@ class _FavoritesScreenState extends State<FavoritesScreen>
                               children: [
                                 Text(
                                   meal['name'],
-                                  style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .titleSmall
+                                      ?.copyWith(fontWeight: FontWeight.w800),
                                 ),
                                 const SizedBox(height: 4),
                                 Text(
@@ -142,7 +127,8 @@ class _FavoritesScreenState extends State<FavoritesScreen>
                             ),
                           ),
                           IconButton(
-                            icon: const Icon(Icons.favorite_rounded, color: Colors.redAccent),
+                            icon: const Icon(Icons.favorite_rounded,
+                                color: Colors.redAccent),
                             onPressed: () {
                               final id = meal['id']?.toString() ?? '';
                               if (id.isNotEmpty) {
@@ -177,7 +163,11 @@ class _FavoritesScreenState extends State<FavoritesScreen>
                     return AppCard(
                       child: Row(
                         children: [
-                          RemoteImage(url: ex['image'], height: 64, width: 64, radius: 12),
+                          RemoteImage(
+                              url: ex['image'],
+                              height: 64,
+                              width: 64,
+                              radius: 12),
                           const SizedBox(width: 14),
                           Expanded(
                             child: Column(
@@ -185,7 +175,10 @@ class _FavoritesScreenState extends State<FavoritesScreen>
                               children: [
                                 Text(
                                   ex['name'],
-                                  style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .titleSmall
+                                      ?.copyWith(fontWeight: FontWeight.w800),
                                 ),
                                 const SizedBox(height: 4),
                                 Text(
@@ -198,7 +191,8 @@ class _FavoritesScreenState extends State<FavoritesScreen>
                             ),
                           ),
                           IconButton(
-                            icon: const Icon(Icons.favorite_rounded, color: Colors.redAccent),
+                            icon: const Icon(Icons.favorite_rounded,
+                                color: Colors.redAccent),
                             onPressed: () {
                               final id = ex['id']?.toString() ?? '';
                               if (id.isNotEmpty) {

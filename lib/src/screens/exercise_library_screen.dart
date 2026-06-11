@@ -28,100 +28,7 @@ class _ExerciseLibraryScreenState extends State<ExerciseLibraryScreen> {
 
   final CatalogService _catalog = CatalogService();
 
-  // Loaded from BE (/api/exercises) on open; the list below is an offline
-  // fallback used only if the backend is unreachable.
-  List<Map<String, dynamic>> _exercises = [
-    {
-      'name': 'Hít đất (Push-up)',
-      'category': 'Ngực',
-      'difficulty': 'Cơ bản',
-      'calories': 120,
-      'duration': '10-15 phút',
-      'image': 'https://images.unsplash.com/photo-1571019614242-c5c5dee9f50b?w=400&h=300&fit=crop',
-      'instructions': [
-        'Nằm sấp trên sàn, hai tay rộng hơn vai một chút.',
-        'Giữ thân người thẳng từ đầu đến gót chân (siết cơ bụng và mông).',
-        'Hạ thấp người xuống cho đến khi ngực gần chạm sàn.',
-        'Đẩy người ngược lên lại vị trí ban đầu.'
-      ],
-      'safety': 'Không để võng lưng hoặc nhô cao mông trong suốt quá trình tập.'
-    },
-    {
-      'name': 'Squat (Cơ bản)',
-      'category': 'Chân',
-      'difficulty': 'Cơ bản',
-      'calories': 150,
-      'duration': '12-15 phút',
-      'image': 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=400&h=300&fit=crop',
-      'instructions': [
-        'Đứng thẳng, hai chân rộng bằng vai, mũi chân hơi hướng ra ngoài.',
-        'Hạ hông xuống như tư thế ngồi ghế, giữ lưng thẳng, đầu gối không vượt quá mũi chân.',
-        'Hạ sâu đùi song song với sàn.',
-        'Dùng lực gót chân đạp mạnh để đứng thẳng dậy.'
-      ],
-      'safety': 'Giữ đầu gối thẳng hàng với hướng mũi chân, tránh để đầu gối chụm vào nhau.'
-    },
-    {
-      'name': 'Plank (Giữ tạ bụng)',
-      'category': 'Core',
-      'difficulty': 'Trung bình',
-      'calories': 80,
-      'duration': '5-8 phút',
-      'image': 'https://images.unsplash.com/photo-1581009146145-b5ef050c2e1e?w=400&h=300&fit=crop',
-      'instructions': [
-        'Chống hai khuỷu tay vuông góc dưới vai.',
-        'Nhón hai mũi chân lên, giữ toàn bộ thân người thẳng hàng.',
-        'Siết chặt cơ core, mông và đùi trong suốt thời gian giữ.',
-        'Hít thở đều đặn, không nín thở.'
-      ],
-      'safety': 'Tránh nín thở và tránh võng lưng dưới gây đau cột sống.'
-    },
-    {
-      'name': 'Pull-up (Hít xà đơn)',
-      'category': 'Lưng',
-      'difficulty': 'Nâng cao',
-      'calories': 200,
-      'duration': '15-20 phút',
-      'image': 'https://images.unsplash.com/photo-1517836357463-d25dfeac3438?w=400&h=300&fit=crop',
-      'instructions': [
-        'Bám chắc hai tay vào thanh xà đơn, độ rộng lớn hơn vai.',
-        'Dùng cơ lưng xô kéo người lên cho đến khi cằm vượt qua xà.',
-        'Hạ người xuống từ từ có kiểm soát để kéo giãn cơ lưng.',
-        'Tránh dùng lực quán tính đung đưa người.'
-      ],
-      'safety': 'Khởi động kỹ khớp vai trước khi thực hiện để tránh chấn thương chóp xoay.'
-    },
-    {
-      'name': 'Dumbbell Shoulder Press',
-      'category': 'Vai/Tay',
-      'difficulty': 'Trung bình',
-      'calories': 130,
-      'duration': '12-15 phút',
-      'image': 'https://images.unsplash.com/photo-1581009146145-b5ef050c2e1e?w=400&h=300&fit=crop',
-      'instructions': [
-        'Ngồi trên ghế thẳng lưng, mỗi tay cầm một quả tạ đặt ở ngang vai.',
-        'Thở ra, đẩy tạ thẳng lên trên đầu cho đến khi tay duỗi thẳng.',
-        'Hít vào, từ từ hạ tạ xuống lại vị trí ngang tai.',
-        'Giữ cổ tay thẳng và thân người cố định.'
-      ],
-      'safety': 'Không khóa khớp cùi chỏ ở điểm cao nhất và không ưỡn ngực quá mức.'
-    },
-    {
-      'name': 'Jumping Jacks (Nhảy dang tay)',
-      'category': 'Cardio',
-      'difficulty': 'Cơ bản',
-      'calories': 180,
-      'duration': '10 phút',
-      'image': 'https://images.unsplash.com/photo-1517836357463-d25dfeac3438?w=400&h=300&fit=crop',
-      'instructions': [
-        'Đứng thẳng, hai chân khép lại, hai tay đặt dọc bên sườn.',
-        'Nhún người nhảy lên, dang rộng hai chân và đưa hai tay vòng qua đầu.',
-        'Nhảy tiếp lần nữa để đưa chân và tay về tư thế ban đầu.',
-        'Thực hiện liên tục nhịp nhàng.'
-      ],
-      'safety': 'Đáp nhẹ nhàng bằng mũi bàn chân để giảm phản lực lên đầu gối.'
-    }
-  ];
+  List<Map<String, dynamic>> _exercises = const [];
 
   @override
   void initState() {
@@ -132,7 +39,7 @@ class _ExerciseLibraryScreenState extends State<ExerciseLibraryScreen> {
   Future<void> _load() async {
     try {
       final rows = await _catalog.exercises();
-      if (rows.isEmpty || !mounted) return;
+      if (!mounted) return;
       setState(() {
         _exercises = rows.map((e) {
           List<String> instructions = const [];
@@ -158,15 +65,23 @@ class _ExerciseLibraryScreenState extends State<ExerciseLibraryScreen> {
         }).toList();
       });
     } catch (_) {
-      // Backend unreachable — keep the offline fallback list.
+      if (mounted) {
+        setState(() {
+          _exercises = const [];
+        });
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final filtered = _exercises.where((ex) {
-      final matchesCat = _selectedCategory == 'Tất cả' || ex['category'] == _selectedCategory;
-      final matchesSearch = ex['name'].toString().toLowerCase().contains(_searchQuery.toLowerCase());
+      final matchesCat =
+          _selectedCategory == 'Tất cả' || ex['category'] == _selectedCategory;
+      final matchesSearch = ex['name']
+          .toString()
+          .toLowerCase()
+          .contains(_searchQuery.toLowerCase());
       return matchesCat && matchesSearch;
     }).toList();
 
@@ -183,8 +98,10 @@ class _ExerciseLibraryScreenState extends State<ExerciseLibraryScreen> {
               onChanged: (val) => setState(() => _searchQuery = val),
               decoration: InputDecoration(
                 hintText: 'Tìm kiếm bài tập...',
-                prefixIcon: const Icon(Icons.search_rounded, color: AppPalette.mutedText),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                prefixIcon: const Icon(Icons.search_rounded,
+                    color: AppPalette.mutedText),
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(20),
                   borderSide: const BorderSide(color: AppPalette.border),
@@ -250,7 +167,10 @@ class _ExerciseLibraryScreenState extends State<ExerciseLibraryScreen> {
                                   children: [
                                     Text(
                                       ex['name'],
-                                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .titleSmall
+                                          ?.copyWith(
                                             fontWeight: FontWeight.w800,
                                           ),
                                     ),
@@ -258,10 +178,12 @@ class _ExerciseLibraryScreenState extends State<ExerciseLibraryScreen> {
                                     Row(
                                       children: [
                                         Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 8, vertical: 4),
                                           decoration: BoxDecoration(
                                             color: AppPalette.blueSoft,
-                                            borderRadius: BorderRadius.circular(8),
+                                            borderRadius:
+                                                BorderRadius.circular(8),
                                           ),
                                           child: Text(
                                             ex['category'],
@@ -275,14 +197,17 @@ class _ExerciseLibraryScreenState extends State<ExerciseLibraryScreen> {
                                         const SizedBox(width: 8),
                                         Text(
                                           ex['difficulty'],
-                                          style: Theme.of(context).textTheme.bodySmall,
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .bodySmall,
                                         ),
                                       ],
                                     ),
                                   ],
                                 ),
                               ),
-                              const Icon(Icons.chevron_right_rounded, color: AppPalette.mutedText),
+                              const Icon(Icons.chevron_right_rounded,
+                                  color: AppPalette.mutedText),
                             ],
                           ),
                         ),
@@ -309,7 +234,8 @@ class _ExerciseLibraryScreenState extends State<ExerciseLibraryScreen> {
             return Container(
               decoration: const BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.sheet)),
+                borderRadius: BorderRadius.vertical(
+                    top: Radius.circular(AppRadius.sheet)),
               ),
               child: Column(
                 children: [
@@ -351,7 +277,8 @@ class _ExerciseLibraryScreenState extends State<ExerciseLibraryScreen> {
                                   color: Colors.white.withValues(alpha: 0.9),
                                   shape: BoxShape.circle,
                                 ),
-                                child: const Icon(Icons.play_arrow_rounded, color: AppPalette.text, size: 36),
+                                child: const Icon(Icons.play_arrow_rounded,
+                                    color: AppPalette.text, size: 36),
                               ),
                             ],
                           ),
@@ -362,18 +289,25 @@ class _ExerciseLibraryScreenState extends State<ExerciseLibraryScreen> {
                             Expanded(
                               child: Text(
                                 ex['name'],
-                                style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .headlineSmall
+                                    ?.copyWith(fontWeight: FontWeight.w800),
                               ),
                             ),
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 10, vertical: 6),
                               decoration: BoxDecoration(
                                 color: AppPalette.blueSoft,
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               child: Text(
                                 '${ex['calories']} cal/set',
-                                style: const TextStyle(color: AppPalette.blue, fontWeight: FontWeight.w800, fontSize: 12),
+                                style: const TextStyle(
+                                    color: AppPalette.blue,
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 12),
                               ),
                             ),
                           ],
@@ -386,7 +320,8 @@ class _ExerciseLibraryScreenState extends State<ExerciseLibraryScreen> {
                         const SizedBox(height: 18),
                         const SectionHeading(
                           title: 'Hướng dẫn thực hiện',
-                          icon: Icon(Icons.format_list_numbered_rounded, color: AppPalette.blue),
+                          icon: Icon(Icons.format_list_numbered_rounded,
+                              color: AppPalette.blue),
                         ),
                         const SizedBox(height: 10),
                         ...List.generate(
@@ -404,10 +339,18 @@ class _ExerciseLibraryScreenState extends State<ExerciseLibraryScreen> {
                                     shape: BoxShape.circle,
                                   ),
                                   alignment: Alignment.center,
-                                  child: Text('${i + 1}', style: const TextStyle(color: AppPalette.blue, fontWeight: FontWeight.w800, fontSize: 12)),
+                                  child: Text('${i + 1}',
+                                      style: const TextStyle(
+                                          color: AppPalette.blue,
+                                          fontWeight: FontWeight.w800,
+                                          fontSize: 12)),
                                 ),
                                 const SizedBox(width: 12),
-                                Expanded(child: Text(ex['instructions'][i], style: Theme.of(context).textTheme.bodyLarge)),
+                                Expanded(
+                                    child: Text(ex['instructions'][i],
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .bodyLarge)),
                               ],
                             ),
                           ),
@@ -423,15 +366,24 @@ class _ExerciseLibraryScreenState extends State<ExerciseLibraryScreen> {
                           child: Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Icon(Icons.warning_amber_rounded, color: Colors.redAccent, size: 20),
+                              const Icon(Icons.warning_amber_rounded,
+                                  color: Colors.redAccent, size: 20),
                               const SizedBox(width: 10),
                               Expanded(
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    const Text('Lưu ý an toàn', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.w800, fontSize: 13)),
+                                    const Text('Lưu ý an toàn',
+                                        style: TextStyle(
+                                            color: Colors.redAccent,
+                                            fontWeight: FontWeight.w800,
+                                            fontSize: 13)),
                                     const SizedBox(height: 4),
-                                    Text(ex['safety'], style: const TextStyle(color: Colors.black87, fontSize: 12, height: 1.4)),
+                                    Text(ex['safety'],
+                                        style: const TextStyle(
+                                            color: Colors.black87,
+                                            fontSize: 12,
+                                            height: 1.4)),
                                   ],
                                 ),
                               ),
@@ -444,7 +396,9 @@ class _ExerciseLibraryScreenState extends State<ExerciseLibraryScreen> {
                           onPressed: () {
                             Navigator.pop(context);
                             ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('Đã thêm bài tập ${ex['name']} vào danh sách.')),
+                              SnackBar(
+                                  content: Text(
+                                      'Đã thêm bài tập ${ex['name']} vào danh sách.')),
                             );
                           },
                           colors: const [AppPalette.blue, Color(0xFF67A1FF)],

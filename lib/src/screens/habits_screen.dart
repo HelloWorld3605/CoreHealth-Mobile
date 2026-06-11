@@ -13,24 +13,18 @@ class HabitsScreen extends StatefulWidget {
 }
 
 class _HabitsScreenState extends State<HabitsScreen> {
-  int _waterDrankMl = 1250;
+  int _waterDrankMl = 0;
   final int _waterTargetMl = 2500;
 
-  double _sleepHours = 6.5;
+  double _sleepHours = 0;
   final double _sleepTargetHours = 8.0;
 
-  int _stepsWalked = 6200;
+  int _stepsWalked = 0;
   final int _stepsTarget = 10000;
 
   final CatalogService _catalog = CatalogService();
 
-  // Loaded from BE (/api/me/habits) on open; list below is offline fallback.
-  List<Map<String, dynamic>> _customHabits = [
-    {'name': 'Đọc sách 15 phút', 'done': false, 'category': 'Trí tuệ'},
-    {'name': 'Thiền định buổi sáng', 'done': true, 'category': 'Tinh thần'},
-    {'name': 'Không ăn vặt sau 8h tối', 'done': false, 'category': 'Dinh dưỡng'},
-    {'name': 'Giãn cơ trước khi ngủ', 'done': false, 'category': 'Thể lực'}
-  ];
+  List<Map<String, dynamic>> _customHabits = const [];
 
   @override
   void initState() {
@@ -41,7 +35,7 @@ class _HabitsScreenState extends State<HabitsScreen> {
   Future<void> _load() async {
     try {
       final rows = await _catalog.habits();
-      if (rows.isEmpty || !mounted) return;
+      if (!mounted) return;
       setState(() {
         _customHabits = rows.map((e) {
           final week = e['weekProgress'];
@@ -57,7 +51,11 @@ class _HabitsScreenState extends State<HabitsScreen> {
         }).toList();
       });
     } catch (_) {
-      // Backend unreachable — keep the offline fallback list.
+      if (mounted) {
+        setState(() {
+          _customHabits = const [];
+        });
+      }
     }
   }
 
@@ -80,7 +78,8 @@ class _HabitsScreenState extends State<HabitsScreen> {
                 children: [
                   const SectionHeading(
                     title: 'Uống nước sạch',
-                    icon: Icon(Icons.local_drink_rounded, color: AppPalette.blue),
+                    icon:
+                        Icon(Icons.local_drink_rounded, color: AppPalette.blue),
                   ),
                   const SizedBox(height: 12),
                   Row(
@@ -92,7 +91,10 @@ class _HabitsScreenState extends State<HabitsScreen> {
                           children: [
                             Text(
                               '$_waterDrankMl / $_waterTargetMl ml',
-                              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .headlineMedium
+                                  ?.copyWith(
                                     color: AppPalette.blue,
                                     fontWeight: FontWeight.w800,
                                   ),
@@ -113,7 +115,8 @@ class _HabitsScreenState extends State<HabitsScreen> {
                             label: '+250ml',
                             onTap: () {
                               setState(() {
-                                _waterDrankMl = (_waterDrankMl + 250).clamp(0, 5000);
+                                _waterDrankMl =
+                                    (_waterDrankMl + 250).clamp(0, 5000);
                               });
                             },
                           ),
@@ -122,7 +125,8 @@ class _HabitsScreenState extends State<HabitsScreen> {
                             label: '+500ml',
                             onTap: () {
                               setState(() {
-                                _waterDrankMl = (_waterDrankMl + 500).clamp(0, 5000);
+                                _waterDrankMl =
+                                    (_waterDrankMl + 500).clamp(0, 5000);
                               });
                             },
                           ),
@@ -152,7 +156,8 @@ class _HabitsScreenState extends State<HabitsScreen> {
                 children: [
                   const SectionHeading(
                     title: 'Giấc ngủ ngon',
-                    icon: Icon(Icons.nightlight_round, color: AppPalette.violet),
+                    icon:
+                        Icon(Icons.nightlight_round, color: AppPalette.violet),
                   ),
                   const SizedBox(height: 12),
                   Row(
@@ -164,7 +169,10 @@ class _HabitsScreenState extends State<HabitsScreen> {
                           children: [
                             Text(
                               '${_sleepHours.toStringAsFixed(1)} / ${_sleepTargetHours.toStringAsFixed(0)} giờ',
-                              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .headlineMedium
+                                  ?.copyWith(
                                     color: AppPalette.violet,
                                     fontWeight: FontWeight.w800,
                                   ),
@@ -184,18 +192,23 @@ class _HabitsScreenState extends State<HabitsScreen> {
                           IconButton(
                             onPressed: () {
                               setState(() {
-                                _sleepHours = (_sleepHours - 0.5).clamp(0.0, 24.0);
+                                _sleepHours =
+                                    (_sleepHours - 0.5).clamp(0.0, 24.0);
                               });
                             },
-                            icon: const Icon(Icons.remove_circle_outline_rounded, color: AppPalette.violet),
+                            icon: const Icon(
+                                Icons.remove_circle_outline_rounded,
+                                color: AppPalette.violet),
                           ),
                           IconButton(
                             onPressed: () {
                               setState(() {
-                                _sleepHours = (_sleepHours + 0.5).clamp(0.0, 24.0);
+                                _sleepHours =
+                                    (_sleepHours + 0.5).clamp(0.0, 24.0);
                               });
                             },
-                            icon: const Icon(Icons.add_circle_outline_rounded, color: AppPalette.violet),
+                            icon: const Icon(Icons.add_circle_outline_rounded,
+                                color: AppPalette.violet),
                           ),
                         ],
                       ),
@@ -223,7 +236,8 @@ class _HabitsScreenState extends State<HabitsScreen> {
                 children: [
                   const SectionHeading(
                     title: 'Vận động đi bộ',
-                    icon: Icon(Icons.directions_walk_rounded, color: AppPalette.emeraldDeep),
+                    icon: Icon(Icons.directions_walk_rounded,
+                        color: AppPalette.emeraldDeep),
                   ),
                   const SizedBox(height: 12),
                   Row(
@@ -235,7 +249,10 @@ class _HabitsScreenState extends State<HabitsScreen> {
                           children: [
                             Text(
                               '$_stepsWalked / $_stepsTarget bước',
-                              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .headlineMedium
+                                  ?.copyWith(
                                     color: AppPalette.emeraldDeep,
                                     fontWeight: FontWeight.w800,
                                   ),
@@ -256,7 +273,8 @@ class _HabitsScreenState extends State<HabitsScreen> {
                             label: '+1000',
                             onTap: () {
                               setState(() {
-                                _stepsWalked = (_stepsWalked + 1000).clamp(0, 50000);
+                                _stepsWalked =
+                                    (_stepsWalked + 1000).clamp(0, 50000);
                               });
                             },
                           ),
@@ -282,69 +300,87 @@ class _HabitsScreenState extends State<HabitsScreen> {
             // Checklist section
             const SectionHeading(
               title: 'Checklist thói quen tự chọn',
-              icon: Icon(Icons.assignment_turned_in_outlined, color: AppPalette.text),
+              icon: Icon(Icons.assignment_turned_in_outlined,
+                  color: AppPalette.text),
             ),
             const SizedBox(height: 10),
 
-            ListView.separated(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: _customHabits.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 10),
-              itemBuilder: (context, idx) {
-                final habit = _customHabits[idx];
-                final done = habit['done'] as bool;
-                return AppCard(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                  child: Row(
-                    children: [
-                      Checkbox(
-                        value: done,
-                        activeColor: AppPalette.emeraldDeep,
-                        onChanged: (val) {
-                          final id = habit['id']?.toString() ?? '';
-                          if (id.isNotEmpty) {
-                            unawaited(_catalog.toggleHabit(id));
-                          }
-                          setState(() {
-                            habit['done'] = val ?? false;
-                          });
-                        },
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              habit['name'],
-                              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                                    fontWeight: FontWeight.w700,
-                                    decoration: done ? TextDecoration.lineThrough : null,
-                                    color: done ? AppPalette.subtleText : AppPalette.text,
-                                  ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              habit['category'],
-                              style: const TextStyle(fontSize: 10, color: AppPalette.mutedText),
-                            ),
-                          ],
+            if (_customHabits.isEmpty)
+              const AppEmptyState(
+                icon: Icons.assignment_turned_in_outlined,
+                title: 'Chưa có thói quen',
+                message: 'Backend chưa trả checklist thói quen nào.',
+              )
+            else
+              ListView.separated(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: _customHabits.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 10),
+                itemBuilder: (context, idx) {
+                  final habit = _customHabits[idx];
+                  final done = habit['done'] as bool;
+                  return AppCard(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 10),
+                    child: Row(
+                      children: [
+                        Checkbox(
+                          value: done,
+                          activeColor: AppPalette.emeraldDeep,
+                          onChanged: (val) {
+                            final id = habit['id']?.toString() ?? '';
+                            if (id.isNotEmpty) {
+                              unawaited(_catalog.toggleHabit(id));
+                            }
+                            setState(() {
+                              habit['done'] = val ?? false;
+                            });
+                          },
                         ),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent, size: 20),
-                        onPressed: () {
-                          setState(() {
-                            _customHabits.removeAt(idx);
-                          });
-                        },
-                      )
-                    ],
-                  ),
-                );
-              },
-            ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                habit['name'],
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .bodyLarge
+                                    ?.copyWith(
+                                      fontWeight: FontWeight.w700,
+                                      decoration: done
+                                          ? TextDecoration.lineThrough
+                                          : null,
+                                      color: done
+                                          ? AppPalette.subtleText
+                                          : AppPalette.text,
+                                    ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                habit['category'],
+                                style: const TextStyle(
+                                    fontSize: 10, color: AppPalette.mutedText),
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.delete_outline_rounded,
+                              color: Colors.redAccent, size: 20),
+                          onPressed: () {
+                            setState(() {
+                              _customHabits.removeAt(idx);
+                            });
+                          },
+                        )
+                      ],
+                    ),
+                  );
+                },
+              ),
 
             const SizedBox(height: 14),
             OutlinedButton.icon(
@@ -366,8 +402,10 @@ class _HabitsScreenState extends State<HabitsScreen> {
       context: context,
       builder: (context) {
         return AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-          title: const Text('Thêm thói quen mới', style: TextStyle(fontWeight: FontWeight.w800)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          title: const Text('Thêm thói quen mới',
+              style: TextStyle(fontWeight: FontWeight.w800)),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -381,8 +419,15 @@ class _HabitsScreenState extends State<HabitsScreen> {
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
                 value: selectedCat,
-                items: ['Dinh dưỡng', 'Thể lực', 'Trí tuệ', 'Tinh thần', 'Lối sống']
-                    .map((cat) => DropdownMenuItem(value: cat, child: Text(cat)))
+                items: [
+                  'Dinh dưỡng',
+                  'Thể lực',
+                  'Trí tuệ',
+                  'Tinh thần',
+                  'Lối sống'
+                ]
+                    .map(
+                        (cat) => DropdownMenuItem(value: cat, child: Text(cat)))
                     .toList(),
                 onChanged: (val) {
                   if (val != null) selectedCat = val;
@@ -394,7 +439,8 @@ class _HabitsScreenState extends State<HabitsScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('Hủy', style: TextStyle(color: AppPalette.mutedText)),
+              child: const Text('Hủy',
+                  style: TextStyle(color: AppPalette.mutedText)),
             ),
             ElevatedButton(
               onPressed: () {
@@ -402,7 +448,14 @@ class _HabitsScreenState extends State<HabitsScreen> {
                 if (name.isNotEmpty) {
                   unawaited(_catalog.createHabit(name));
                   setState(() {
-                    _customHabits.add({'name': name, 'done': false, 'category': selectedCat});
+                    _customHabits = [
+                      ..._customHabits,
+                      {
+                        'name': name,
+                        'done': false,
+                        'category': selectedCat,
+                      }
+                    ];
                   });
                   Navigator.pop(context);
                 }
@@ -435,7 +488,10 @@ class _QuickAddButton extends StatelessWidget {
         ),
         child: Text(
           label,
-          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 11, color: AppPalette.text),
+          style: const TextStyle(
+              fontWeight: FontWeight.w800,
+              fontSize: 11,
+              color: AppPalette.text),
         ),
       ),
     );

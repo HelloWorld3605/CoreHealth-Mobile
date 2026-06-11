@@ -6,7 +6,7 @@ import 'package:http/http.dart' as http;
 import 'environment_config.dart';
 
 /// Read-only catalog/data reads from the shared CoreHealth backend, used to
-/// replace the screens' hardcoded mock lists. Returns lightweight maps so the
+/// hydrate catalog screens from backend records. Returns lightweight maps so the
 /// existing screen widgets can render real BE data with minimal change.
 class CatalogService {
   static const _storage = FlutterSecureStorage();
@@ -51,10 +51,11 @@ class CatalogService {
       : const [];
 
   // --- Mutations (persist user actions to BE) ---
-  Future<void> hideFavorite(String id) => _post('/me/favorites/hide', {'id': id});
+  Future<void> hideFavorite(String id) =>
+      _post('/me/favorites/hide', {'id': id});
   Future<void> toggleHabit(String id) => _post('/me/habits/$id/toggle');
-  Future<void> createHabit(String name) =>
-      _post('/me/habits', {'name': name, 'icon': '🎯', 'color': 'text-emerald-400'});
+  Future<void> createHabit(String name) => _post(
+      '/me/habits', {'name': name, 'icon': '🎯', 'color': 'text-emerald-400'});
 
   // GET /api/shop/products -> { products: [...] }
   Future<List<Map<String, dynamic>>> products() async {

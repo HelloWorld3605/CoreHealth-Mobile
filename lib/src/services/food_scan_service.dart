@@ -64,11 +64,13 @@ class FoodScanService {
   Future<FoodScanResult> analyzeByName(String foodName) async {
     try {
       final map = await _analyze({'text': foodName});
-      if (map['error'] != null) return _fallback(foodName);
+      if (map['error'] != null) {
+        throw Exception(map['error'].toString());
+      }
       return _fromBe(foodName, map);
     } catch (e) {
       debugPrint('FoodScan analyzeByName error: $e');
-      return _fallback(foodName);
+      rethrow;
     }
   }
 
@@ -85,13 +87,4 @@ class FoodScanService {
       serving: map['details'] as String? ?? map['serving'] as String? ?? '',
     );
   }
-
-  FoodScanResult _fallback(String name) => FoodScanResult(
-        name: name,
-        calories: 0,
-        protein: 0,
-        carbs: 0,
-        fat: 0,
-        serving: '',
-      );
 }

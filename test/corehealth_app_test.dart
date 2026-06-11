@@ -92,6 +92,35 @@ void main() {
     expect(controller.stage, equals(AppStage.home));
   });
 
+  test('empty AI generation does not expose demo meal or workout plans',
+      () async {
+    final repository = _MemoryRepository();
+    final controller = AppController(
+      repository: repository,
+      aiService: _EmptyAiService(),
+    );
+
+    await controller.register(
+      displayName: 'Demo User',
+      email: 'demo@corehealth.app',
+      password: 'password123',
+    );
+    await controller.verifyOtp(
+      email: 'demo@corehealth.app',
+      otp: '123456',
+    );
+
+    final error = await controller.finishOnboarding(DemoData.initialProfile);
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+
+    expect(error, isNull);
+    expect(repository.savedMealDays, isEmpty);
+    expect(repository.savedWorkoutDays, isEmpty);
+    expect(controller.todayMeals, isEmpty);
+    expect(controller.mealPlan, isEmpty);
+    expect(controller.workoutPlan, isEmpty);
+  });
+
   test('token top-up uses server order and refreshes wallet from backend',
       () async {
     final repository = _MemoryRepository();
@@ -658,5 +687,22 @@ class _FakeAiService extends AiService {
         ],
       ),
     ];
+  }
+}
+
+class _EmptyAiService extends AiService {
+  @override
+  Future<List<InsightItem>> generateInsights(DemoProfile profile) async {
+    return const [];
+  }
+
+  @override
+  Future<List<MealPlanDay>> generateMealPlan(DemoProfile profile) async {
+    return const [];
+  }
+
+  @override
+  Future<List<WorkoutDay>> generateWorkoutPlan(DemoProfile profile) async {
+    return const [];
   }
 }

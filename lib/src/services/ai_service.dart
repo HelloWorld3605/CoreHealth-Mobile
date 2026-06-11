@@ -4,7 +4,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 
-import '../demo_data.dart';
 import '../models.dart';
 import 'environment_config.dart';
 
@@ -16,14 +15,6 @@ import 'environment_config.dart';
 class AiService {
   static const _storage = FlutterSecureStorage();
   static const _tokenKey = 'corehealth_jwt';
-
-  // Cycle through bundled images for AI-generated meals (BE returns no image).
-  static const _mealImages = [
-    DemoData.heroFood,
-    DemoData.bowlPhoto,
-    DemoData.heroFood,
-    DemoData.bowlPhoto,
-  ];
 
   // In-memory insight cache: profileHash → (insights, timestamp)
   static const _cacheTtl = Duration(hours: 6);
@@ -100,7 +91,7 @@ class AiService {
     try {
       final data = await _get('/ai/insights');
       final list = data is List ? data : const [];
-      if (list.isEmpty) return _fallbackInsights();
+      if (list.isEmpty) return const [];
       final insights = list.map((e) {
         final m = e as Map<String, dynamic>;
         return InsightItem(
@@ -113,7 +104,7 @@ class AiService {
       return insights;
     } catch (e) {
       debugPrint('AI insights error: $e');
-      return _fallbackInsights();
+      return const [];
     }
   }
 
@@ -167,7 +158,6 @@ class AiService {
   Future<List<MealPlanDay>> generateMealPlan(DemoProfile profile) async {
     final key = _profileHash(profile);
     if (_mealPlanCache.containsKey(key)) return _mealPlanCache[key]!;
-    final targetCal = _targetCalories(profile);
     try {
       final json = await _post('/ai/generate-plan', {
         'type': 'meal',
@@ -178,18 +168,12 @@ class AiService {
         'startDate': _todayIso(),
       });
       final result = _parseBeMealPlan(json['mealPlan']);
-      if (result.isEmpty) {
-        final fb = _fallbackMealPlan(targetCal);
-        _mealPlanCache[key] = fb;
-        return fb;
-      }
+      if (result.isEmpty) return const [];
       _mealPlanCache[key] = result;
       return result;
     } catch (e) {
       debugPrint('AI meal plan error: $e');
-      final fb = _fallbackMealPlan(targetCal);
-      _mealPlanCache[key] = fb;
-      return fb;
+      return const [];
     }
   }
 
@@ -206,18 +190,12 @@ class AiService {
         'startDate': _todayIso(),
       });
       final result = _parseBeWorkoutPlan(json['workoutPlan']);
-      if (result.isEmpty) {
-        final fb = _fallbackWorkoutPlan();
-        _workoutPlanCache[key] = fb;
-        return fb;
-      }
+      if (result.isEmpty) return const [];
       _workoutPlanCache[key] = result;
       return result;
     } catch (e) {
       debugPrint('AI workout plan error: $e');
-      final fb = _fallbackWorkoutPlan();
-      _workoutPlanCache[key] = fb;
-      return fb;
+      return const [];
     }
   }
 
@@ -242,7 +220,7 @@ class AiService {
           protein: (m['protein'] as num? ?? 0).toInt(),
           carbs: (m['carbs'] as num? ?? 0).toInt(),
           fat: (m['fat'] as num? ?? 0).toInt(),
-          imageUrl: _mealImages[mEntry.key % _mealImages.length],
+          imageUrl: '',
           ingredients: details.isEmpty ? const [] : [details],
         );
       }).toList();
@@ -280,113 +258,14 @@ class AiService {
   }
 
   // ---------------------------------------------------------------------------
-  // Helpers + offline fallbacks (used when the backend is unreachable)
+  // Helpers
   // ---------------------------------------------------------------------------
-
-  int _targetCalories(DemoProfile profile) {
-    final tdee = profile.tdee;
-    return switch (profile.goal) {
-      GoalType.loseWeight => (tdee * 0.80).round(),
-      GoalType.gainMuscle => (tdee * 1.10).round(),
-      _ => tdee.round(),
-    };
-  }
 
   String _profileHash(DemoProfile p) =>
       '${p.name}_${p.weightKg}_${p.targetWeightKg}_${p.goal.name}_${p.activityLevel.name}'
       '_${p.trainingFrequency}_${p.focusAreas.join(',')}_${p.preferredActivities.join(',')}'
       '_${p.mealBudget}_${p.cookingTime}_${p.nutritionPriorities.join(',')}'
       '_${p.allergies.join(',')}_${p.dietaryRestrictions.join(',')}_${p.healthConditions.join(',')}';
-
-  List<MealPlanDay> _fallbackMealPlan(int targetCal) {
-    return List.generate(7, (i) {
-      return MealPlanDay(
-        dayNumber: i + 1,
-        meals: [
-          MealItem(
-            id: 'fb_d${i}_m0',
-            nameVi: 'Bữa sáng tiêu chuẩn',
-            slotLabel: 'Sáng',
-            calories: (targetCal * 0.3).round(),
-            protein: 20,
-            carbs: 40,
-            fat: 10,
-            imageUrl: _mealImages[0],
-            ingredients: const ['Trứng', 'Bánh mì nguyên cám', 'Sữa'],
-          ),
-          MealItem(
-            id: 'fb_d${i}_m1',
-            nameVi: 'Bữa trưa dinh dưỡng',
-            slotLabel: 'Trưa',
-            calories: (targetCal * 0.4).round(),
-            protein: 30,
-            carbs: 50,
-            fat: 15,
-            imageUrl: _mealImages[1],
-            ingredients: const ['Cơm gạo lứt', 'Ức gà', 'Rau xanh'],
-          ),
-          MealItem(
-            id: 'fb_d${i}_m2',
-            nameVi: 'Bữa tối nhẹ nhàng',
-            slotLabel: 'Tối',
-            calories: (targetCal * 0.3).round(),
-            protein: 25,
-            carbs: 30,
-            fat: 10,
-            imageUrl: _mealImages[2],
-            ingredients: const ['Cá hồi', 'Salad', 'Cà chua'],
-          ),
-        ],
-      );
-    });
-  }
-
-  List<WorkoutDay> _fallbackWorkoutPlan() {
-    return List.generate(7, (i) {
-      return WorkoutDay(
-        dayNumber: i + 1,
-        focusVi: i % 2 == 0 ? 'Toàn thân' : 'Nghỉ ngơi',
-        exercises: i % 2 == 0
-            ? [
-                WorkoutExercise(
-                  id: 'fb_d${i}_e0',
-                  nameVi: 'Khởi động',
-                  description: 'Khởi động các khớp',
-                  durationMinutes: 10,
-                  caloriesBurned: 50,
-                ),
-                WorkoutExercise(
-                  id: 'fb_d${i}_e1',
-                  nameVi: 'Chạy bộ nhẹ',
-                  description: 'Chạy bộ tại chỗ hoặc trên máy',
-                  durationMinutes: 20,
-                  caloriesBurned: 150,
-                ),
-              ]
-            : [],
-      );
-    });
-  }
-
-  List<InsightItem> _fallbackInsights() => const [
-        InsightItem(
-          title: 'Tiếp tục cố lên! 💪',
-          message:
-              'Duy trì lịch tập và ăn uống đều đặn mỗi ngày để đạt mục tiêu.',
-          accent: 'success',
-        ),
-        InsightItem(
-          title: 'Uống đủ nước',
-          message: 'Ít nhất 2 lít nước/ngày giúp trao đổi chất tốt hơn.',
-          accent: 'emerald',
-        ),
-        InsightItem(
-          title: 'Ngủ đủ giấc',
-          message:
-              '7-8 tiếng ngủ mỗi đêm là yếu tố quan trọng để phục hồi cơ thể.',
-          accent: 'violet',
-        ),
-      ];
 }
 
 class _InsightCache {

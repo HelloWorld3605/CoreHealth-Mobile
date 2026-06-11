@@ -53,7 +53,7 @@ class PaymentScreen extends StatefulWidget {
 // Payment method definitions
 // ---------------------------------------------------------------------------
 
-enum _MethodGroup { wallet, international, bank }
+enum _MethodGroup { wallet, bank }
 
 class _PayMethod {
   const _PayMethod({
@@ -63,8 +63,6 @@ class _PayMethod {
     required this.color,
     required this.icon,
     required this.group,
-    this.iosOnly = false,
-    this.androidOnly = false,
   });
 
   final String id;
@@ -73,28 +71,9 @@ class _PayMethod {
   final Color color;
   final IconData icon;
   final _MethodGroup group;
-  final bool iosOnly;
-  final bool androidOnly;
 }
 
 const _methods = <_PayMethod>[
-  // --- Ví điện tử ---
-  _PayMethod(
-    id: 'momo',
-    name: 'MoMo',
-    subtitle: 'Ví điện tử phổ biến tại Việt Nam',
-    color: Color(0xFFAE2070),
-    icon: Icons.account_balance_wallet_rounded,
-    group: _MethodGroup.wallet,
-  ),
-  _PayMethod(
-    id: 'zalopay',
-    name: 'ZaloPay',
-    subtitle: 'Thanh toán qua ZaloPay',
-    color: Color(0xFF0068FF),
-    icon: Icons.account_balance_wallet_outlined,
-    group: _MethodGroup.wallet,
-  ),
   _PayMethod(
     id: 'vnpay',
     name: 'VNPay QR',
@@ -102,33 +81,6 @@ const _methods = <_PayMethod>[
     color: Color(0xFF0A4396),
     icon: Icons.qr_code_2_rounded,
     group: _MethodGroup.wallet,
-  ),
-  // --- Quốc tế ---
-  _PayMethod(
-    id: 'paypal',
-    name: 'PayPal',
-    subtitle: 'Thẻ tín dụng & tài khoản PayPal quốc tế',
-    color: Color(0xFF003087),
-    icon: Icons.language_rounded,
-    group: _MethodGroup.international,
-  ),
-  _PayMethod(
-    id: 'applepay',
-    name: 'Apple Pay',
-    subtitle: 'Thanh toán nhanh bằng Face ID / Touch ID',
-    color: Colors.black,
-    icon: Icons.apple_rounded,
-    group: _MethodGroup.international,
-    iosOnly: true,
-  ),
-  _PayMethod(
-    id: 'googlepay',
-    name: 'Google Pay',
-    subtitle: 'Thanh toán nhanh bằng Google Wallet',
-    color: Color(0xFF4285F4),
-    icon: Icons.g_mobiledata_rounded,
-    group: _MethodGroup.international,
-    androidOnly: true,
   ),
   // --- Ngân hàng ---
   _PayMethod(
@@ -185,7 +137,7 @@ const _methods = <_PayMethod>[
 // State
 // ---------------------------------------------------------------------------
 
-enum _PayState { selecting, awaitingPayment, processing, success, timeout }
+enum _PayState { selecting, awaitingPayment, success, timeout }
 
 class _PaymentScreenState extends State<PaymentScreen>
     with SingleTickerProviderStateMixin {
@@ -343,16 +295,7 @@ class _PaymentScreenState extends State<PaymentScreen>
     }
   }
 
-  bool _visible(_PayMethod m) {
-    if (m.group != _MethodGroup.bank && m.id != 'vnpay') {
-      return false;
-    }
-    if (m.iosOnly) return Theme.of(context).platform == TargetPlatform.iOS;
-    if (m.androidOnly) {
-      return Theme.of(context).platform == TargetPlatform.android;
-    }
-    return true;
-  }
+  bool _visible(_PayMethod _) => true;
 
   @override
   Widget build(BuildContext context) {
@@ -394,23 +337,18 @@ class _PaymentScreenState extends State<PaymentScreen>
         },
       );
     }
-    return Stack(
-      children: [
-        _SelectingScreen(
-          amountK: widget.amountK,
-          description: widget.description,
-          selected: _selected,
-          reference: _reference,
-          qrUrl: _orderQrUrl,
-          bankName: _bankName,
-          accountNumber: _accountNumber,
-          accountOwner: _accountOwner,
-          onSelect: (m) => setState(() => _selected = m),
-          onConfirm: _selected != null ? _confirm : null,
-          visible: _visible,
-        ),
-        if (_state == _PayState.processing) const _ProcessingOverlay(),
-      ],
+    return _SelectingScreen(
+      amountK: widget.amountK,
+      description: widget.description,
+      selected: _selected,
+      reference: _reference,
+      qrUrl: _orderQrUrl,
+      bankName: _bankName,
+      accountNumber: _accountNumber,
+      accountOwner: _accountOwner,
+      onSelect: (m) => setState(() => _selected = m),
+      onConfirm: _selected != null ? _confirm : null,
+      visible: _visible,
     );
   }
 }
@@ -547,8 +485,7 @@ class _SelectingScreen extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    section('VÍ ĐIỆN TỬ', _MethodGroup.wallet),
-                    section('QUỐC TẾ', _MethodGroup.international),
+                    section('QUÉT QR', _MethodGroup.wallet),
                     section('NGÂN HÀNG VIỆT NAM', _MethodGroup.bank),
                   ],
                 ),
@@ -720,53 +657,6 @@ class _MethodDetail extends StatelessWidget {
         indent: 14,
         endIndent: 14);
 
-    // MoMo / ZaloPay — fake QR (not monitored by SePay)
-    if (method.id == 'momo' || method.id == 'zalopay') {
-      final phone = method.id == 'momo' ? '0901 234 567' : '0909 876 543';
-      return Column(
-        children: [
-          divider(),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
-            child: Column(
-              children: [
-                _FakeQrCode(seed: amountK, color: method.color),
-                const SizedBox(height: 16),
-                _InfoRow(label: 'Số điện thoại', value: phone, copyable: true),
-                const _InfoRow(label: 'Tên tài khoản', value: 'CoreHealth VN'),
-                _InfoRow(
-                    label: 'Số tiền',
-                    value: '${_formatAmount(amountK)} VNĐ',
-                    highlight: true),
-                const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: method.color.withValues(alpha: 0.07),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(Icons.info_outline_rounded,
-                          color: method.color, size: 16),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          'Quét mã QR bằng app ${method.name} rồi nhấn "Thanh toán".',
-                          style: tt.bodySmall
-                              ?.copyWith(color: method.color, height: 1.4),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      );
-    }
-
     // VNPay QR — real VietQR preview (full confirmation via SePay polling)
     if (method.id == 'vnpay') {
       final previewQrUrl = (qrUrl != null && qrUrl!.isNotEmpty)
@@ -823,109 +713,6 @@ class _MethodDetail extends StatelessWidget {
       );
     }
 
-    // PayPal
-    if (method.id == 'paypal') {
-      return Column(
-        children: [
-          divider(),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
-            child: Column(
-              children: [
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(18),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF003087).withValues(alpha: 0.06),
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(
-                        color: const Color(0xFF003087).withValues(alpha: 0.15)),
-                  ),
-                  child: Column(
-                    children: [
-                      const Icon(Icons.language_rounded,
-                          color: Color(0xFF003087), size: 36),
-                      const SizedBox(height: 10),
-                      Text('Thanh toán qua PayPal',
-                          style: tt.bodyMedium?.copyWith(
-                              fontWeight: FontWeight.w700,
-                              color: const Color(0xFF003087))),
-                      const SizedBox(height: 4),
-                      Text('pay@corehealth.vn',
-                          style: tt.bodySmall
-                              ?.copyWith(color: AppPalette.mutedText)),
-                      const SizedBox(height: 6),
-                      Text(
-                          '${_formatAmount(amountK)} VNĐ ≈ \$${(amountK * 1000 / 25000).toStringAsFixed(2)} USD',
-                          style: tt.bodySmall
-                              ?.copyWith(color: AppPalette.mutedText)),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  'Sau khi nhấn "Thanh toán", ứng dụng sẽ mở PayPal để hoàn tất.',
-                  textAlign: TextAlign.center,
-                  style: tt.bodySmall
-                      ?.copyWith(color: AppPalette.mutedText, height: 1.4),
-                ),
-              ],
-            ),
-          ),
-        ],
-      );
-    }
-
-    // Apple Pay / Google Pay
-    if (method.id == 'applepay' || method.id == 'googlepay') {
-      return Column(
-        children: [
-          divider(),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
-            child: Column(
-              children: [
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(18),
-                  decoration: BoxDecoration(
-                    color: method.color.withValues(
-                        alpha: method.id == 'applepay' ? 0.04 : 0.06),
-                    borderRadius: BorderRadius.circular(14),
-                    border:
-                        Border.all(color: method.color.withValues(alpha: 0.15)),
-                  ),
-                  child: Column(
-                    children: [
-                      Icon(method.icon, color: method.color, size: 36),
-                      const SizedBox(height: 10),
-                      Text(method.name,
-                          style: tt.bodyMedium?.copyWith(
-                              fontWeight: FontWeight.w700,
-                              color: method.color)),
-                      const SizedBox(height: 4),
-                      Text('${_formatAmount(amountK)} VNĐ',
-                          style: tt.bodySmall
-                              ?.copyWith(color: AppPalette.mutedText)),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  method.id == 'applepay'
-                      ? 'Xác thực bằng Face ID hoặc Touch ID khi nhấn "Thanh toán".'
-                      : 'Xác thực bằng Google Wallet khi nhấn "Thanh toán".',
-                  textAlign: TextAlign.center,
-                  style: tt.bodySmall
-                      ?.copyWith(color: AppPalette.mutedText, height: 1.4),
-                ),
-              ],
-            ),
-          ),
-        ],
-      );
-    }
-
     // Bank transfer — all banks point to same SePay-monitored MB Bank account
     return Column(
       children: [
@@ -953,16 +740,10 @@ class _MethodDetail extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 14),
+              _InfoRow(label: 'Ngân hàng nhận', value: bankName),
               _InfoRow(
-                  label: 'Ngân hàng nhận',
-                  value: bankName),
-              _InfoRow(
-                  label: 'Số tài khoản',
-                  value: accountNumber,
-                  copyable: true),
-              _InfoRow(
-                  label: 'Chủ tài khoản',
-                  value: accountOwner),
+                  label: 'Số tài khoản', value: accountNumber, copyable: true),
+              _InfoRow(label: 'Chủ tài khoản', value: accountOwner),
               _InfoRow(
                   label: 'Số tiền',
                   value: '${_formatAmount(amountK)} VNĐ',
@@ -1089,16 +870,12 @@ class _AwaitingPaymentScreen extends StatelessWidget {
                 ),
                 child: Column(
                   children: [
-                    _InfoRow(
-                        label: 'Ngân hàng',
-                        value: bankName),
+                    _InfoRow(label: 'Ngân hàng', value: bankName),
                     _InfoRow(
                         label: 'Số tài khoản',
                         value: accountNumber,
                         copyable: true),
-                    _InfoRow(
-                        label: 'Chủ tài khoản',
-                        value: accountOwner),
+                    _InfoRow(label: 'Chủ tài khoản', value: accountOwner),
                     _InfoRow(
                         label: 'Số tiền',
                         value: '${_formatAmount(amountK)} VNĐ',
@@ -1330,125 +1107,6 @@ class _InfoRow extends StatelessWidget {
                   size: 16, color: AppPalette.mutedText),
             ),
         ],
-      ),
-    );
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Fake QR code (MoMo / ZaloPay only — not connected to SePay)
-// ---------------------------------------------------------------------------
-
-class _FakeQrCode extends StatelessWidget {
-  const _FakeQrCode({required this.seed, required this.color});
-
-  final int seed;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return CustomPaint(
-      size: const Size(180, 180),
-      painter: _QrPainter(seed: seed, color: color),
-    );
-  }
-}
-
-class _QrPainter extends CustomPainter {
-  _QrPainter({required this.seed, required this.color});
-
-  final int seed;
-  final Color color;
-
-  static const _size = 21;
-
-  bool _cell(int r, int c, math.Random rng) {
-    bool finder(int br, int bc) {
-      final dr = r - br, dc = c - bc;
-      if (dr < 0 || dr > 6 || dc < 0 || dc > 6) return false;
-      if (dr == 0 || dr == 6 || dc == 0 || dc == 6) return true;
-      if (dr >= 2 && dr <= 4 && dc >= 2 && dc <= 4) return true;
-      return false;
-    }
-
-    if (finder(0, 0) || finder(0, _size - 7) || finder(_size - 7, 0)) {
-      return true;
-    }
-    if (r == 6 && c > 7 && c < _size - 7) return c % 2 == 0;
-    if (c == 6 && r > 7 && r < _size - 7) return r % 2 == 0;
-    return rng.nextBool();
-  }
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final rng = math.Random(seed);
-    final cellSz = size.width / _size;
-    final paint = Paint()..color = color;
-    final bgPaint = Paint()..color = Colors.white;
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(Offset.zero & size, const Radius.circular(12)),
-      bgPaint,
-    );
-    for (int r = 0; r < _size; r++) {
-      for (int c = 0; c < _size; c++) {
-        if (_cell(r, c, rng)) {
-          canvas.drawRRect(
-            RRect.fromRectAndRadius(
-              Rect.fromLTWH(
-                  c * cellSz + 1, r * cellSz + 1, cellSz - 2, cellSz - 2),
-              const Radius.circular(2),
-            ),
-            paint,
-          );
-        }
-      }
-    }
-  }
-
-  @override
-  bool shouldRepaint(_QrPainter old) => old.seed != seed || old.color != color;
-}
-
-// ---------------------------------------------------------------------------
-// Processing overlay (mock methods only)
-// ---------------------------------------------------------------------------
-
-class _ProcessingOverlay extends StatelessWidget {
-  const _ProcessingOverlay();
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox.expand(
-      child: ColoredBox(
-        color: Colors.black.withValues(alpha: 0.55),
-        child: Center(
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 28),
-            decoration: BoxDecoration(
-              color: AppPalette.surface,
-              borderRadius: BorderRadius.circular(24),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const CircularProgressIndicator(
-                    color: AppPalette.emerald, strokeWidth: 3),
-                const SizedBox(height: 20),
-                Text('Đang xử lý thanh toán...',
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodyLarge
-                        ?.copyWith(fontWeight: FontWeight.w700)),
-                const SizedBox(height: 6),
-                Text('Vui lòng không thoát màn hình',
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodySmall
-                        ?.copyWith(color: AppPalette.mutedText)),
-              ],
-            ),
-          ),
-        ),
       ),
     );
   }

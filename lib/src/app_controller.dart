@@ -37,14 +37,14 @@ class AppController extends ChangeNotifier {
   AppUserSession? _session;
   OnboardingProgress _onboardingProgress = const OnboardingProgress();
   DemoProfile _profile = DemoData.initialProfile;
-  List<WeightEntry> _weightHistory = DemoData.weightEntries;
+  List<WeightEntry> _weightHistory = const [];
   Set<int> _completedWorkoutDays = const {};
   Set<int> _completedMealDays = const {};
   List<Product> _cart = const [];
   List<OrderSummary> _orders = const [];
   final CatalogService _catalog = CatalogService();
-  // Shop catalog from BE (/api/shop/products); DemoData is the offline fallback.
-  List<Product> _products = DemoData.products;
+  // Shop catalog from BE (/api/shop/products).
+  List<Product> _products = const [];
   List<TokenTransaction> _tokenTransactions = const [];
   UserSettings _settings = const UserSettings();
   String? _pendingVerificationEmail;
@@ -52,7 +52,7 @@ class AppController extends ChangeNotifier {
   String? _pendingPasswordResetEmail;
   String? _devPasswordResetOtp;
 
-  List<InsightItem> _insights = DemoData.dashboardInsights;
+  List<InsightItem> _insights = const [];
   bool _insightsLoading = false;
   final _chatHistories = <CoachType, List<ChatMessage>>{};
   final _chatLoading = <CoachType, bool>{};
@@ -87,17 +87,15 @@ class AppController extends ChangeNotifier {
   OnboardingProgress get onboardingProgress => _onboardingProgress;
   DemoProfile get profile => _profile;
   List<WeightEntry> get weightHistory => List.unmodifiable(_weightHistory);
-  List<MealItem> get todayMeals =>
-      _currentMealPlan?.meals ?? DemoData.todayMeals;
+  List<MealItem> get todayMeals => _currentMealPlan?.meals ?? const [];
   List<OrderSummary> get orders => List.unmodifiable(_orders);
   List<Product> get cart => List.unmodifiable(_cart);
   List<Product> get products => List.unmodifiable(_products);
 
-  // Loads the shop catalog from BE; keeps the DemoData fallback on failure.
+  // Loads the shop catalog from BE.
   Future<void> _loadProducts() async {
     try {
       final rows = await _catalog.products();
-      if (rows.isEmpty) return;
       _products = rows
           .map((e) => Product(
                 id: (e['id'] ?? '').toString(),
@@ -111,8 +109,10 @@ class AppController extends ChangeNotifier {
               ))
           .toList();
       notifyListeners();
-    } catch (_) {
-      // Backend unreachable — keep the DemoData fallback.
+    } catch (e, st) {
+      debugPrint('loadProducts error: $e\n$st');
+      _products = const [];
+      notifyListeners();
     }
   }
 
@@ -208,12 +208,12 @@ class AppController extends ChangeNotifier {
 
   List<MealPlanDay> get mealPlan {
     if (_generationMealPlans.isNotEmpty) return _generationMealPlans;
-    return DemoData.mealPlan(totalDays: totalPlanDays.clamp(30, 180));
+    return const [];
   }
 
   List<WorkoutDay> get workoutPlan {
     if (_generationWorkoutPlans.isNotEmpty) return _generationWorkoutPlans;
-    return DemoData.workoutPlan(totalDays: totalPlanDays.clamp(30, 180));
+    return const [];
   }
 
   Future<void> initialize() async {
@@ -653,7 +653,7 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> saveOnboardingStep(int step, Map<String, dynamic> data) async {
-    // Mock API call to save onboarding step
+    // Keep local progress responsive while onboarding answers are saved later.
     await Future.delayed(const Duration(milliseconds: 300));
     _onboardingProgress = OnboardingProgress(
       currentStep: step,
@@ -1228,7 +1228,7 @@ class AppController extends ChangeNotifier {
   void _resetUserState() {
     _session = null;
     _profile = DemoData.initialProfile;
-    _weightHistory = DemoData.weightEntries;
+    _weightHistory = const [];
     _completedWorkoutDays = const {};
     _completedMealDays = const {};
     _cart = const [];
@@ -1236,7 +1236,7 @@ class AppController extends ChangeNotifier {
     _tokenTransactions = const [];
     _settings = const UserSettings();
     _showPostOnboardingOffer = false;
-    _insights = DemoData.dashboardInsights;
+    _insights = const [];
     _chatHistories.clear();
     _chatLoading.clear();
     _chatSessions = const [];

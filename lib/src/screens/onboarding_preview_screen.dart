@@ -11,7 +11,8 @@ class OnboardingPreviewScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
-        title: const Text('Báo cáo phân tích AI', style: TextStyle(fontWeight: FontWeight.w800)),
+        title: const Text('Báo cáo phân tích AI',
+            style: TextStyle(fontWeight: FontWeight.w800)),
         automaticallyImplyLeading: false,
       ),
       body: SingleChildScrollView(
@@ -29,7 +30,8 @@ class OnboardingPreviewScreen extends StatelessWidget {
                 children: [
                   const CircleAvatar(
                     backgroundColor: AppPalette.emeraldDeep,
-                    child: Icon(Icons.auto_awesome_rounded, color: Colors.white, size: 20),
+                    child: Icon(Icons.auto_awesome_rounded,
+                        color: Colors.white, size: 20),
                   ),
                   const SizedBox(width: 14),
                   Expanded(
@@ -38,12 +40,18 @@ class OnboardingPreviewScreen extends StatelessWidget {
                       children: [
                         const Text(
                           'Kế hoạch của bạn đã sẵn sàng!',
-                          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: AppPalette.text),
+                          style: TextStyle(
+                              fontWeight: FontWeight.w800,
+                              fontSize: 15,
+                              color: AppPalette.text),
                         ),
                         const SizedBox(height: 2),
                         Text(
                           'AI đã tổng hợp dữ liệu khảo sát và thiết lập lộ trình tối ưu nhất.',
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppPalette.mutedText),
+                          style: Theme.of(context)
+                              .textTheme
+                              .bodySmall
+                              ?.copyWith(color: AppPalette.mutedText),
                         ),
                       ],
                     ),
@@ -64,14 +72,23 @@ class OnboardingPreviewScreen extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('Ngân sách Calo', style: TextStyle(color: AppPalette.mutedText, fontSize: 11)),
+                        const Text('Ngân sách Calo',
+                            style: TextStyle(
+                                color: AppPalette.mutedText, fontSize: 11)),
                         const SizedBox(height: 6),
                         Text(
                           '1.850 kcal',
-                          style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800, color: AppPalette.orange),
+                          style: Theme.of(context)
+                              .textTheme
+                              .titleLarge
+                              ?.copyWith(
+                                  fontWeight: FontWeight.w800,
+                                  color: AppPalette.orange),
                         ),
                         const SizedBox(height: 2),
-                        const Text('Mức thâm hụt giảm mỡ', style: TextStyle(fontSize: 10, color: AppPalette.mutedText)),
+                        const Text('Mức thâm hụt giảm mỡ',
+                            style: TextStyle(
+                                fontSize: 10, color: AppPalette.mutedText)),
                       ],
                     ),
                   ),
@@ -83,14 +100,23 @@ class OnboardingPreviewScreen extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('Lượng Protein', style: TextStyle(color: AppPalette.mutedText, fontSize: 11)),
+                        const Text('Lượng Protein',
+                            style: TextStyle(
+                                color: AppPalette.mutedText, fontSize: 11)),
                         const SizedBox(height: 6),
                         Text(
                           '110 gram',
-                          style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800, color: AppPalette.blue),
+                          style: Theme.of(context)
+                              .textTheme
+                              .titleLarge
+                              ?.copyWith(
+                                  fontWeight: FontWeight.w800,
+                                  color: AppPalette.blue),
                         ),
                         const SizedBox(height: 2),
-                        const Text('Duy trì khối lượng cơ', style: TextStyle(fontSize: 10, color: AppPalette.mutedText)),
+                        const Text('Duy trì khối lượng cơ',
+                            style: TextStyle(
+                                fontSize: 10, color: AppPalette.mutedText)),
                       ],
                     ),
                   ),
@@ -116,8 +142,11 @@ class OnboardingPreviewScreen extends StatelessWidget {
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text('Tuần 1', style: TextStyle(fontSize: 10, color: AppPalette.mutedText)),
-                          Text('65,0 kg', style: Theme.of(context).textTheme.titleSmall),
+                          const Text('Tuần 1',
+                              style: TextStyle(
+                                  fontSize: 10, color: AppPalette.mutedText)),
+                          Text('65,0 kg',
+                              style: Theme.of(context).textTheme.titleSmall),
                         ],
                       ),
                       Column(
@@ -125,22 +154,29 @@ class OnboardingPreviewScreen extends StatelessWidget {
                         children: [
                           Text(
                             'Giảm ~2,4 kg',
-                            style: TextStyle(fontWeight: FontWeight.w800, color: AppPalette.emeraldDeep, fontSize: 12),
+                            style: TextStyle(
+                                fontWeight: FontWeight.w800,
+                                color: AppPalette.emeraldDeep,
+                                fontSize: 12),
                           ),
-                          const Icon(Icons.trending_down_rounded, color: AppPalette.emeraldDeep, size: 18),
+                          const Icon(Icons.trending_down_rounded,
+                              color: AppPalette.emeraldDeep, size: 18),
                         ],
                       ),
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
-                          const Text('Tuần 4', style: TextStyle(fontSize: 10, color: AppPalette.mutedText)),
-                          Text('62,6 kg', style: Theme.of(context).textTheme.titleSmall),
+                          const Text('Tuần 4',
+                              style: TextStyle(
+                                  fontSize: 10, color: AppPalette.mutedText)),
+                          Text('62,6 kg',
+                              style: Theme.of(context).textTheme.titleSmall),
                         ],
                       ),
                     ],
                   ),
                   const SizedBox(height: 18),
-                  // Draw a mock chart
+                  // Draw an illustrative projection chart.
                   SizedBox(
                     height: 100,
                     child: SparklineChart(
@@ -157,11 +193,26 @@ class OnboardingPreviewScreen extends StatelessWidget {
             // Timeline Preview
             const SectionHeading(title: 'Lịch trình tuần đầu tiên'),
             const SizedBox(height: 10),
-            _TimelineDayRow(day: 'Thứ 2', focus: 'Tập ngực & tay sau • Bữa ăn cơ bản', color: AppPalette.blue),
-            _TimelineDayRow(day: 'Thứ 3', focus: 'Active Recovery • Bữa ăn nhẹ calo', color: AppPalette.emeraldDeep),
-            _TimelineDayRow(day: 'Thứ 4', focus: 'Tập lưng & tay trước • Bữa ăn nhiều protein', color: AppPalette.blue),
-            _TimelineDayRow(day: 'Thứ 5', focus: 'Active Recovery • Lối sống thiền định', color: AppPalette.emeraldDeep),
-            _TimelineDayRow(day: 'Thứ 6', focus: 'Tập chân & mông đùi • Bữa ăn cơ bản', color: AppPalette.blue),
+            _TimelineDayRow(
+                day: 'Thứ 2',
+                focus: 'Tập ngực & tay sau • Bữa ăn cơ bản',
+                color: AppPalette.blue),
+            _TimelineDayRow(
+                day: 'Thứ 3',
+                focus: 'Active Recovery • Bữa ăn nhẹ calo',
+                color: AppPalette.emeraldDeep),
+            _TimelineDayRow(
+                day: 'Thứ 4',
+                focus: 'Tập lưng & tay trước • Bữa ăn nhiều protein',
+                color: AppPalette.blue),
+            _TimelineDayRow(
+                day: 'Thứ 5',
+                focus: 'Active Recovery • Lối sống thiền định',
+                color: AppPalette.emeraldDeep),
+            _TimelineDayRow(
+                day: 'Thứ 6',
+                focus: 'Tập chân & mông đùi • Bữa ăn cơ bản',
+                color: AppPalette.blue),
             const SizedBox(height: 32),
 
             // Confirm Action
@@ -178,7 +229,8 @@ class OnboardingPreviewScreen extends StatelessWidget {
 }
 
 class _TimelineDayRow extends StatelessWidget {
-  const _TimelineDayRow({required this.day, required this.focus, required this.color});
+  const _TimelineDayRow(
+      {required this.day, required this.focus, required this.color});
   final String day;
   final String focus;
   final Color color;
@@ -200,7 +252,8 @@ class _TimelineDayRow extends StatelessWidget {
             alignment: Alignment.center,
             child: Text(
               day,
-              style: TextStyle(color: color, fontWeight: FontWeight.w800, fontSize: 11),
+              style: TextStyle(
+                  color: color, fontWeight: FontWeight.w800, fontSize: 11),
             ),
           ),
           const SizedBox(width: 14),
@@ -214,7 +267,10 @@ class _TimelineDayRow extends StatelessWidget {
               ),
               child: Text(
                 focus,
-                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppPalette.text),
+                style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: AppPalette.text),
               ),
             ),
           ),

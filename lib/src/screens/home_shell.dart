@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../app_controller.dart';
-import '../demo_data.dart';
 import '../models.dart';
 import '../widgets/adaptive.dart';
 import '../theme.dart';
@@ -2828,7 +2827,9 @@ class _MealPlanScreenState extends State<MealPlanScreen>
         c.generateAiMealPlan().then((success) {
           if (!success && mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Không thể tạo kế hoạch lúc này, vui lòng thử lại sau.')),
+              const SnackBar(
+                  content: Text(
+                      'Không thể tạo kế hoạch lúc này, vui lòng thử lại sau.')),
             );
           }
         });
@@ -2942,7 +2943,9 @@ class _MealPlanScreenState extends State<MealPlanScreen>
                       final success = await controller.generateAiMealPlan();
                       if (!success && context.mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Không thể tạo kế hoạch lúc này, vui lòng thử lại sau.')),
+                          const SnackBar(
+                              content: Text(
+                                  'Không thể tạo kế hoạch lúc này, vui lòng thử lại sau.')),
                         );
                       }
                     }(),
@@ -2976,13 +2979,16 @@ class _MealPlanScreenState extends State<MealPlanScreen>
                   onPressed: controller.isMealPlanGenerating
                       ? null
                       : () => () async {
-                      final success = await controller.generateAiMealPlan();
-                      if (!success && context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Không thể tạo kế hoạch lúc này, vui lòng thử lại sau.')),
-                        );
-                      }
-                    }(),
+                            final success =
+                                await controller.generateAiMealPlan();
+                            if (!success && context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                    content: Text(
+                                        'Không thể tạo kế hoạch lúc này, vui lòng thử lại sau.')),
+                              );
+                            }
+                          }(),
                   style: OutlinedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(
                         horizontal: 14, vertical: 10),
@@ -4386,8 +4392,38 @@ class _ShopScreenState extends State<ShopScreen>
   }
 
   String _categoryLabel(String categoryId) {
-    final match = DemoData.categories.where((item) => item.$1 == categoryId);
-    return match.isEmpty ? 'Thực phẩm' : match.first.$2;
+    final normalized = categoryId.trim();
+    if (normalized.isEmpty) return 'Khác';
+    const labels = {
+      'supplements': 'Thực phẩm bổ sung',
+      'equipment': 'Dụng cụ',
+      'apparel': 'Trang phục',
+      'mealkits': 'Meal kits',
+      'food': 'Thực phẩm',
+      'foods': 'Thực phẩm',
+      'snack': 'Ăn nhẹ',
+      'drink': 'Đồ uống',
+    };
+    final mapped = labels[normalized.toLowerCase()];
+    if (mapped != null) return mapped;
+    return normalized
+        .split(RegExp(r'[_\-\s]+'))
+        .where((part) => part.isNotEmpty)
+        .map((part) => part[0].toUpperCase() + part.substring(1))
+        .join(' ');
+  }
+
+  List<(String, String)> _categoryItems(List<Product> products) {
+    final ids = products
+        .map((product) => product.categoryId.trim())
+        .where((id) => id.isNotEmpty)
+        .toSet()
+        .toList()
+      ..sort();
+    return [
+      ('all', 'Tất cả'),
+      ...ids.map((id) => (id, _categoryLabel(id))),
+    ];
   }
 
   @override
@@ -4399,6 +4435,7 @@ class _ShopScreenState extends State<ShopScreen>
     final isCompact = layout.isCompact;
     final horizontalPadding = layout.horizontalPadding;
     final allProducts = CoreHealthScope.of(context).products;
+    final categoryItems = _categoryItems(allProducts);
     final products = allProducts.where((product) {
       final matchesCategory =
           category == 'all' || product.categoryId == category;
@@ -4599,7 +4636,7 @@ class _ShopScreenState extends State<ShopScreen>
                           child: ListView.separated(
                             scrollDirection: Axis.horizontal,
                             itemBuilder: (context, index) {
-                              final item = DemoData.categories[index];
+                              final item = categoryItems[index];
                               final active = category == item.$1;
                               return ChoiceChip(
                                 selected: active,
@@ -4621,7 +4658,7 @@ class _ShopScreenState extends State<ShopScreen>
                             },
                             separatorBuilder: (_, __) =>
                                 const SizedBox(width: 10),
-                            itemCount: DemoData.categories.length,
+                            itemCount: categoryItems.length,
                           ),
                         ),
                       ),
