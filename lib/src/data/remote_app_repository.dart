@@ -387,78 +387,154 @@ class RemoteAppRepository implements AppRepository {
     await _storage.delete(key: _tokenKey);
   }
 
+  // --- Chat sessions: server-synced via /me/chat-sessions + bootstrap ---
+
   @override
-  Future<List<ChatSession>> getChatSessions({required String userId}) {
-    throw UnimplementedError();
+  Future<List<ChatSession>> getChatSessions({required String userId}) async {
+    final data = await _request('GET', '/me/chat-sessions');
+    return _list(data)
+        .map((e) => ChatSession.fromJson(e as Map<String, dynamic>))
+        .toList();
   }
 
   @override
-  Future<void> saveChatSession(
-      {required String userId, required ChatSession session}) {
-    throw UnimplementedError();
+  Future<void> saveChatSession({
+    required String userId,
+    required ChatSession session,
+  }) async {
+    // BE persists the full session list; upsert by id then send the whole set.
+    final existing = await getChatSessions(userId: userId);
+    final next = <ChatSession>[
+      session,
+      ...existing.where((s) => s.id != session.id),
+    ];
+    await _request('POST', '/me/chat-sessions', {
+      'sessions': next.map((s) => s.toJson()).toList(),
+    });
   }
 
   @override
-  Future<void> deleteChatSession(
-      {required String userId, required String sessionId}) {
-    throw UnimplementedError();
+  Future<void> deleteChatSession({
+    required String userId,
+    required String sessionId,
+  }) async {
+    final existing = await getChatSessions(userId: userId);
+    await _request('POST', '/me/chat-sessions', {
+      'sessions': existing
+          .where((s) => s.id != sessionId)
+          .map((s) => s.toJson())
+          .toList(),
+    });
   }
 
-  // Architecture V2: AI Synchronization Methods (Stubs for remote)
+  // --- AI plans / shopping / progress: device-local (secure storage) ---
+  // BE stores plans as a single blob without version/dayIndex granularity, so
+  // per-day reads are cached locally. Plans are still GENERATED server-side via
+  // /api/ai/generate-plan (no client AI keys); only the per-day cache is local.
+  // Keyed by (userId, dayIndex|date) — the app always renders the current plan.
+
+  Future<void> _writeLocal(String key, Object? value) =>
+      _storage.write(key: key, value: jsonEncode(value));
+
+  Future<Map<String, dynamic>?> _readLocalMap(String key) async {
+    final raw = await _storage.read(key: key);
+    if (raw == null || raw.isEmpty) return null;
+    final decoded = jsonDecode(raw);
+    return decoded is Map<String, dynamic> ? decoded : null;
+  }
+
+  Future<List<dynamic>> _readLocalList(String key) async {
+    final raw = await _storage.read(key: key);
+    if (raw == null || raw.isEmpty) return const [];
+    final decoded = jsonDecode(raw);
+    return decoded is List ? decoded : const [];
+  }
 
   @override
-  Future<void> savePlanGeneration({required String userId, required PlanGeneration generation}) async {
-    throw UnimplementedError();
-  }
+  Future<void> savePlanGeneration({
+    required String userId,
+    required PlanGeneration generation,
+  }) =>
+      _writeLocal('chg_gen_$userId', generation.toJson());
 
   @override
   Future<PlanGeneration?> getCurrentGeneration({required String userId}) async {
-    throw UnimplementedError();
+    final map = await _readLocalMap('chg_gen_$userId');
+    return map == null ? null : PlanGeneration.fromJson(map);
   }
 
   @override
-  Future<void> saveMealPlan({required String userId, required String generationId, required int dayIndex, required MealPlanDay plan}) async {
-    throw UnimplementedError();
+  Future<void> saveMealPlan({
+    required String userId,
+    required String generationId,
+    required int dayIndex,
+    required MealPlanDay plan,
+  }) =>
+      _writeLocal('chg_meal_${userId}_$dayIndex', plan.toJson());
+
+  @override
+  Future<MealPlanDay?> getMealPlan({
+    required String userId,
+    required int version,
+    required int dayIndex,
+  }) async {
+    final map = await _readLocalMap('chg_meal_${userId}_$dayIndex');
+    return map == null ? null : MealPlanDay.fromJson(map);
   }
 
   @override
-  Future<MealPlanDay?> getMealPlan({required String userId, required int version, required int dayIndex}) async {
-    throw UnimplementedError();
+  Future<void> saveWorkoutPlan({
+    required String userId,
+    required String generationId,
+    required int dayIndex,
+    required WorkoutDay plan,
+  }) =>
+      _writeLocal('chg_wk_${userId}_$dayIndex', plan.toJson());
+
+  @override
+  Future<WorkoutDay?> getWorkoutPlan({
+    required String userId,
+    required int version,
+    required int dayIndex,
+  }) async {
+    final map = await _readLocalMap('chg_wk_${userId}_$dayIndex');
+    return map == null ? null : WorkoutDay.fromJson(map);
   }
 
   @override
-  Future<void> saveWorkoutPlan({required String userId, required String generationId, required int dayIndex, required WorkoutDay plan}) async {
-    throw UnimplementedError();
-  }
-
-  @override
-  Future<WorkoutDay?> getWorkoutPlan({required String userId, required int version, required int dayIndex}) async {
-    throw UnimplementedError();
-  }
-
-  @override
-  Future<void> saveShoppingItems({required String userId, required List<ShoppingItem> items}) async {
-    throw UnimplementedError();
-  }
+  Future<void> saveShoppingItems({
+    required String userId,
+    required List<ShoppingItem> items,
+  }) =>
+      _writeLocal('chg_shop_$userId', items.map((e) => e.toJson()).toList());
 
   @override
   Future<List<ShoppingItem>> getShoppingItems({required String userId}) async {
-    throw UnimplementedError();
+    final list = await _readLocalList('chg_shop_$userId');
+    return list
+        .map((e) => ShoppingItem.fromJson(e as Map<String, dynamic>))
+        .toList();
   }
 
   @override
-  Future<void> saveDailyProgress({required String userId, required DailyProgress progress}) async {
-    throw UnimplementedError();
-  }
+  Future<void> saveDailyProgress({
+    required String userId,
+    required DailyProgress progress,
+  }) =>
+      _writeLocal('chg_prog_${userId}_${progress.date}', progress.toJson());
 
   @override
-  Future<DailyProgress?> getDailyProgress({required String userId, required String date}) async {
-    throw UnimplementedError();
+  Future<DailyProgress?> getDailyProgress({
+    required String userId,
+    required String date,
+  }) async {
+    final map = await _readLocalMap('chg_prog_${userId}_$date');
+    return map == null ? null : DailyProgress.fromJson(map);
   }
 
   @override
   Future<void> logAiEvent({required String userId, required AiEvent event}) async {
-    throw UnimplementedError();
+    // No-op: AI usage is audited server-side on each /api/ai/* call.
   }
 
   Future<AuthResult> _auth(String path, Map<String, Object?> body) async {
