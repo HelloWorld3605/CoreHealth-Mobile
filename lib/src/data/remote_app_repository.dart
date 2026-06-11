@@ -151,9 +151,19 @@ class RemoteAppRepository implements AppRepository {
     required SubscriptionPlan plan,
     required int months,
   }) async {
-    final json = await _request('POST', '/me/subscription', {
-      'plan': plan.name,
-      'months': months,
+    // BE has no /me/subscription route — `plan` is a profile field persisted via
+    // PUT /me/profile and surfaced through bootstrap. Read the current profile,
+    // apply the new plan/duration, and persist it through the proven path.
+    final current = (await bootstrap()).userData;
+    if (current == null) {
+      throw const AppAuthException('Phiên đăng nhập đã hết hạn.');
+    }
+    final updated = current.profile.copyWith(
+      plan: plan,
+      subscriptionMonths: months,
+    );
+    final json = await _request('PUT', '/me/profile', {
+      'profile': _profileToJson(updated),
     });
     return _userData(json);
   }
@@ -165,19 +175,13 @@ class RemoteAppRepository implements AppRepository {
     required int tokenEarned,
     required int tokenSpent,
   }) async {
-    try {
-      final json = await _request('POST', '/me/token-wallet', {
-        'tokenBalance': tokenBalance,
-        'tokenEarned': tokenEarned,
-        'tokenSpent': tokenSpent,
-      });
-      return _userData(json);
-    } on AppAuthException {
-      final bootstrap = await this.bootstrap();
-      final userData = bootstrap.userData;
-      if (userData == null) rethrow;
-      return userData;
+    // The wallet is authoritative server-side (charges, refunds, purchases,
+    // bonuses). The client cannot write it, so reconcile against bootstrap.
+    final userData = (await bootstrap()).userData;
+    if (userData == null) {
+      throw const AppAuthException('Phiên đăng nhập đã hết hạn.');
     }
+    return userData;
   }
 
   @override
@@ -185,25 +189,38 @@ class RemoteAppRepository implements AppRepository {
     required String userId,
     required UserSettings settings,
   }) async {
+    // BE preferences use a different shape ({notifications, units}) and return a
+    // preferences map, NOT userData — parsing it as userData would clobber state.
+    // Persist the notification toggles best-effort, then reflect the chosen
+    // settings on top of fresh user data. `language` stays client-side.
     try {
-      final json = await _request('POST', '/me/settings', {
-        'settings': _settingsToJson(settings),
+      await _request('PUT', '/me/preferences', {
+        'notifications': {
+          'waterReminders': settings.waterReminderEnabled,
+          'workoutReminders': settings.workoutReminderEnabled,
+          'weeklyWeightReminders': settings.weeklyWeightReminderEnabled,
+        },
       });
-      return _userData(json).copyWith(settings: settings);
     } on AppAuthException {
-      final bootstrap = await this.bootstrap();
-      final userData = bootstrap.userData;
-      if (userData == null) rethrow;
-      return userData.copyWith(settings: settings);
+      // Best-effort persistence — fall through to reflect settings locally.
     }
+    final userData = (await bootstrap()).userData;
+    if (userData == null) {
+      throw const AppAuthException('Phiên đăng nhập đã hết hạn.');
+    }
+    return userData.copyWith(settings: settings);
   }
 
   @override
   Future<List<TokenTransaction>> getTokenTransactions({
     required String userId,
   }) async {
-    final data = await _request('GET', '/me/token-transactions');
-    return _list(data).map(_tokenTransaction).toList(growable: false);
+    // Token ledger lives under the wallet overview (recentTransactions, 20).
+    final data = await _request('GET', '/me/wallet');
+    final list = data is Map<String, dynamic>
+        ? _list(data['recentTransactions'])
+        : const <dynamic>[];
+    return list.map(_tokenTransaction).toList(growable: false);
   }
 
   @override
@@ -211,13 +228,8 @@ class RemoteAppRepository implements AppRepository {
     required String userId,
     required TokenTransaction transaction,
   }) async {
-    await _request('POST', '/me/token-transactions', {
-      'id': transaction.id,
-      'amount': transaction.amount,
-      'priceK': transaction.priceK,
-      'description': transaction.description,
-      'createdAt': transaction.createdAt.toIso8601String(),
-    });
+    // No-op: the ledger is written server-side when the wallet is charged,
+    // refunded, or topped up. The client must not author ledger entries.
   }
 
   Future<PersistedUserData> purchaseTokenPack({
@@ -536,13 +548,6 @@ class RemoteAppRepository implements AppRepository {
     );
   }
 
-  Map<String, Object?> _settingsToJson(UserSettings settings) => {
-        'waterReminderEnabled': settings.waterReminderEnabled,
-        'workoutReminderEnabled': settings.workoutReminderEnabled,
-        'weeklyWeightReminderEnabled': settings.weeklyWeightReminderEnabled,
-        'language': settings.language,
-      };
-
   DemoProfile _profile(Map<String, dynamic> json) {
     final walletTokens = _readInt(json, 'walletTokens',
         _readInt(json, 'walletBalance', _readInt(json, 'tokenBalance', 0)));
@@ -678,7 +683,8 @@ class RemoteAppRepository implements AppRepository {
       id: json['id'] as String? ?? '',
       amount: (json['amount'] as num?)?.toInt() ?? 0,
       priceK: _readInt(json, 'priceK', _readInt(json, 'price_k', 0)),
-      description: json['description'] as String? ?? '',
+      description:
+          json['description'] as String? ?? json['note'] as String? ?? '',
       createdAt: DateTime.tryParse(
             (json['createdAt'] ?? json['created_at'] ?? '').toString(),
           ) ??
