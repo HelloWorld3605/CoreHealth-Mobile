@@ -1,11 +1,9 @@
 import 'dart:convert';
-import 'dart:io';
 import 'dart:math';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import '../demo_data.dart';
 import '../models.dart';
-import '../services/email_service.dart';
 import 'app_repository.dart';
 
 class MemoryAppRepository implements AppRepository {
@@ -111,17 +109,8 @@ class MemoryAppRepository implements AppRepository {
       referralCode: referralCode,
     );
 
-    try {
-      if (!Platform.environment.containsKey('FLUTTER_TEST')) {
-        await EmailService().sendOtpEmail(toEmail: normalizedEmail, otp: otp);
-      } else {
-        debugPrint('Skipping sending OTP email in test environment. OTP: $otp');
-      }
-    } catch (e) {
-      debugPrint('Error sending OTP email: $e. OTP: $otp');
-      throw AppAuthException(
-          'Không thể gửi email xác thực: $e. Vui lòng kiểm tra lại mạng hoặc thông tin Gmail.');
-    }
+    // Offline/debug repository: no real email — OTP is surfaced via devOtp.
+    debugPrint('[offline] OTP for $normalizedEmail: $otp');
 
     return RegisterResponseData(
       success: true,
@@ -316,19 +305,7 @@ class MemoryAppRepository implements AppRepository {
       referralCode: pending.referralCode,
     );
 
-    try {
-      if (!Platform.environment.containsKey('FLUTTER_TEST')) {
-        await EmailService()
-            .sendOtpEmail(toEmail: normalizedEmail, otp: newOtp);
-      } else {
-        debugPrint(
-            'Skipping sending OTP email in test environment. OTP: $newOtp');
-      }
-    } catch (e) {
-      debugPrint('Error sending OTP email: $e. OTP: $newOtp');
-      throw AppAuthException(
-          'Không thể gửi lại email xác thực: $e. Vui lòng kiểm tra lại mạng hoặc thông tin Gmail.');
-    }
+    debugPrint('[offline] Resent OTP for $normalizedEmail: $newOtp');
 
     return RegisterResponseData(
       success: true,
@@ -354,19 +331,7 @@ class MemoryAppRepository implements AppRepository {
       createdAt: DateTime.now(),
     );
 
-    try {
-      if (!Platform.environment.containsKey('FLUTTER_TEST')) {
-        await EmailService()
-            .sendPasswordResetEmail(toEmail: normalizedEmail, otp: otp);
-      } else {
-        debugPrint(
-            'Skipping sending password reset email in test environment. OTP: $otp');
-      }
-    } catch (e) {
-      debugPrint('Error sending password reset email: $e. OTP: $otp');
-      throw AppAuthException(
-          'Không thể gửi email đặt lại mật khẩu: $e. Vui lòng kiểm tra lại mạng hoặc thông tin Gmail.');
-    }
+    debugPrint('[offline] Password reset OTP for $normalizedEmail: $otp');
 
     return RegisterResponseData(
       success: true,
