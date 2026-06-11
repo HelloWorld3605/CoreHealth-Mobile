@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../services/catalog_service.dart';
 import '../theme.dart';
 import '../widgets/visuals.dart';
 
@@ -12,8 +13,10 @@ class FavoritesScreen extends StatefulWidget {
 class _FavoritesScreenState extends State<FavoritesScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  final CatalogService _catalog = CatalogService();
 
-  final List<Map<String, dynamic>> _favoriteMeals = [
+  // Loaded from BE (/api/me/favorites) on open; lists below are offline fallback.
+  List<Map<String, dynamic>> _favoriteMeals = [
     {
       'name': 'Ức gà phi lê áp chảo chanh dây',
       'calories': 380,
@@ -28,7 +31,7 @@ class _FavoritesScreenState extends State<FavoritesScreen>
     }
   ];
 
-  final List<Map<String, dynamic>> _favoriteExercises = [
+  List<Map<String, dynamic>> _favoriteExercises = [
     {
       'name': 'Hít đất (Push-up)',
       'category': 'Ngực',
@@ -47,6 +50,28 @@ class _FavoritesScreenState extends State<FavoritesScreen>
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final groups = await _catalog.favorites();
+      if (!mounted || groups.isEmpty) return;
+      List<Map<String, dynamic>> mapItems(String key) =>
+          (groups[key] ?? const []).map((e) {
+            return <String, dynamic>{
+              'name': e['title'] ?? '',
+              'image': e['image'] ?? '',
+              'meta': e['meta'] ?? '',
+            };
+          }).toList();
+      setState(() {
+        _favoriteMeals = mapItems('Meals');
+        _favoriteExercises = mapItems('Exercises');
+      });
+    } catch (_) {
+      // Backend unreachable — keep the offline fallback lists.
+    }
   }
 
   @override
@@ -105,7 +130,9 @@ class _FavoritesScreenState extends State<FavoritesScreen>
                                 ),
                                 const SizedBox(height: 4),
                                 Text(
-                                  '${meal['calories']} kcal • ${meal['protein']}g protein',
+                                  (meal['meta']?.toString().isNotEmpty ?? false)
+                                      ? meal['meta'].toString()
+                                      : '${meal['calories']} kcal • ${meal['protein']}g protein',
                                   style: Theme.of(context).textTheme.bodySmall,
                                 ),
                               ],
@@ -155,7 +182,9 @@ class _FavoritesScreenState extends State<FavoritesScreen>
                                 ),
                                 const SizedBox(height: 4),
                                 Text(
-                                  'Cơ chính: ${ex['category']} • ${ex['difficulty']}',
+                                  (ex['meta']?.toString().isNotEmpty ?? false)
+                                      ? ex['meta'].toString()
+                                      : 'Cơ chính: ${ex['category']} • ${ex['difficulty']}',
                                   style: Theme.of(context).textTheme.bodySmall,
                                 ),
                               ],

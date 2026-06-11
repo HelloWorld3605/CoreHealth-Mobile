@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../services/catalog_service.dart';
 import '../theme.dart';
 import '../widgets/visuals.dart';
 
@@ -19,12 +20,43 @@ class _HabitsScreenState extends State<HabitsScreen> {
   int _stepsWalked = 6200;
   final int _stepsTarget = 10000;
 
-  final List<Map<String, dynamic>> _customHabits = [
+  final CatalogService _catalog = CatalogService();
+
+  // Loaded from BE (/api/me/habits) on open; list below is offline fallback.
+  List<Map<String, dynamic>> _customHabits = [
     {'name': 'Đọc sách 15 phút', 'done': false, 'category': 'Trí tuệ'},
     {'name': 'Thiền định buổi sáng', 'done': true, 'category': 'Tinh thần'},
     {'name': 'Không ăn vặt sau 8h tối', 'done': false, 'category': 'Dinh dưỡng'},
     {'name': 'Giãn cơ trước khi ngủ', 'done': false, 'category': 'Thể lực'}
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final rows = await _catalog.habits();
+      if (rows.isEmpty || !mounted) return;
+      setState(() {
+        _customHabits = rows.map((e) {
+          final week = e['weekProgress'];
+          final doneToday =
+              week is List && week.isNotEmpty && week.last == true;
+          final streak = (e['streak'] as num?)?.toInt() ?? 0;
+          return <String, dynamic>{
+            'name': e['name'] ?? '',
+            'done': doneToday,
+            'category': streak > 0 ? '🔥 $streak ngày' : 'Thói quen',
+          };
+        }).toList();
+      });
+    } catch (_) {
+      // Backend unreachable — keep the offline fallback list.
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
