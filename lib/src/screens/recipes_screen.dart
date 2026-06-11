@@ -1,4 +1,7 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import '../services/catalog_service.dart';
 import '../theme.dart';
 import '../widgets/visuals.dart';
 
@@ -15,7 +18,10 @@ class _RecipesScreenState extends State<RecipesScreen> {
 
   final List<String> _filters = ['Tất cả', 'Cao Đạm', 'Ít Calo', 'Chay', 'Nấu Nhanh'];
 
-  final List<Map<String, dynamic>> _recipes = [
+  final CatalogService _catalog = CatalogService();
+
+  // Loaded from BE (/api/foods) on open; list below is offline fallback.
+  List<Map<String, dynamic>> _recipes = [
     {
       'name': 'Ức gà áp chảo sốt chanh dây',
       'calories': 380,
@@ -106,6 +112,70 @@ class _RecipesScreenState extends State<RecipesScreen> {
   ];
 
   @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final rows = await _catalog.foods();
+      if (rows.isEmpty || !mounted) return;
+      setState(() {
+        _recipes = rows.map((e) {
+          return <String, dynamic>{
+            'id': e['id'] ?? '',
+            'name': e['name'] ?? '',
+            'calories': (e['kcal'] as num?)?.toInt() ?? 0,
+            'protein': (e['protein'] as num?)?.toInt() ?? 0,
+            'carbs': (e['carbs'] as num?)?.toInt() ?? 0,
+            'fat': (e['fat'] as num?)?.toInt() ?? 0,
+            'time': '',
+            'filters': <String>[],
+            'image': e['imageUrl'] ?? '',
+            'ingredients': <String>[],
+            'steps': <String>[],
+          };
+        }).toList();
+      });
+    } catch (_) {
+      // Backend unreachable — keep the offline fallback list.
+    }
+  }
+
+  List<String> _parseJsonList(Object? raw) {
+    if (raw is List) return raw.map((x) => x.toString()).toList();
+    if (raw is String && raw.trim().isNotEmpty) {
+      try {
+        final parsed = jsonDecode(raw);
+        if (parsed is List) return parsed.map((x) => x.toString()).toList();
+      } catch (_) {}
+    }
+    return const [];
+  }
+
+  // Recipe detail (ingredients/steps) lives in /api/foods/{id}; fetch lazily.
+  Future<void> _openRecipe(
+      BuildContext context, Map<String, dynamic> rec) async {
+    var data = rec;
+    final id = rec['id'];
+    final hasSteps = (rec['steps'] as List?)?.isNotEmpty ?? false;
+    if (!hasSteps && id is String && id.isNotEmpty) {
+      try {
+        final detail = await _catalog.foodDetail(id);
+        if (detail.isNotEmpty) {
+          data = {
+            ...rec,
+            'ingredients': _parseJsonList(detail['ingredientsJson']),
+            'steps': _parseJsonList(detail['instructionsJson']),
+          };
+        }
+      } catch (_) {/* show with whatever we have */}
+    }
+    if (context.mounted) _showRecipeDetail(context, data);
+  }
+
+  @override
   Widget build(BuildContext context) {
     final filtered = _recipes.where((rec) {
       final matchesFilter = _selectedFilter == 'Tất cả' || rec['filters'].contains(_selectedFilter);
@@ -176,7 +246,7 @@ class _RecipesScreenState extends State<RecipesScreen> {
                     itemBuilder: (context, idx) {
                       final rec = filtered[idx];
                       return GestureDetector(
-                        onTap: () => _showRecipeDetail(context, rec),
+                        onTap: () => _openRecipe(context, rec),
                         child: AppCard(
                           child: Row(
                             children: [

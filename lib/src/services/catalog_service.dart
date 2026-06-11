@@ -53,6 +53,12 @@ class CatalogService {
   Future<List<Map<String, dynamic>>> foods() async =>
       _asList(await _get('/foods?size=100'));
 
+  // GET /api/foods/{id} -> detail incl. ingredientsJson, instructionsJson
+  Future<Map<String, dynamic>> foodDetail(String id) async {
+    final data = await _get('/foods/$id');
+    return data is Map<String, dynamic> ? data : <String, dynamic>{};
+  }
+
   // GET /api/challenges -> [ {id,title,description,image,participants,daysLeft,
   //                           totalDays,prize,rewardTokens,status,joined,progress} ]
   Future<List<Map<String, dynamic>>> challenges() async =>
