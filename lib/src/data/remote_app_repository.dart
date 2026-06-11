@@ -18,6 +18,12 @@ class RemoteAppRepository implements AppRepository {
   static const _storage = FlutterSecureStorage();
   static const _tokenKey = 'corehealth_jwt';
 
+  // Shared key that tells the backend to skip the web Turnstile CAPTCHA for this
+  // native client (BE: X-Mobile-Captcha-Bypass). Injected at build time via
+  // --dart-define=COREHEALTH_MOBILE_CAPTCHA_KEY=... ; empty = header not sent.
+  static const _mobileCaptchaKey =
+      String.fromEnvironment('COREHEALTH_MOBILE_CAPTCHA_KEY');
+
   /// Must be called once after construction to load persisted JWT.
   Future<void> init() async {
     _token = await _storage.read(key: _tokenKey);
@@ -557,6 +563,9 @@ class RemoteAppRepository implements AppRepository {
   ]) async {
     final uri = Uri.parse('$_baseUrl$path');
     final headers = <String, String>{'Content-Type': 'application/json'};
+    if (_mobileCaptchaKey.isNotEmpty) {
+      headers['X-Mobile-Captcha-Bypass'] = _mobileCaptchaKey;
+    }
     if (authenticated && _token != null) {
       headers['Authorization'] = 'Bearer $_token';
     }
