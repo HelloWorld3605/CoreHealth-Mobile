@@ -423,4 +423,63 @@ class _MemoryRepository implements AppRepository {
   @override
   Future<void> deleteChatSession(
       {required String userId, required String sessionId}) async {}
+
+  @override
+  Future<void> savePlanGeneration(
+      {required String userId, required PlanGeneration generation}) async {}
+
+  @override
+  Future<PlanGeneration?> getCurrentGeneration(
+          {required String userId}) async =>
+      null;
+
+  @override
+  Future<void> saveMealPlan(
+      {required String userId,
+      required String generationId,
+      required int dayIndex,
+      required MealPlanDay plan}) async {}
+
+  @override
+  Future<MealPlanDay?> getMealPlan(
+          {required String userId,
+          required int version,
+          required int dayIndex}) async =>
+      null;
+
+  @override
+  Future<void> saveWorkoutPlan(
+      {required String userId,
+      required String generationId,
+      required int dayIndex,
+      required WorkoutDay plan}) async {}
+
+  @override
+  Future<WorkoutDay?> getWorkoutPlan(
+          {required String userId,
+          required int version,
+          required int dayIndex}) async =>
+      null;
+
+  @override
+  Future<void> saveShoppingItems(
+      {required String userId, required List<ShoppingItem> items}) async {}
+
+  @override
+  Future<List<ShoppingItem>> getShoppingItems(
+          {required String userId}) async =>
+      const [];
+
+  @override
+  Future<void> saveDailyProgress(
+      {required String userId, required DailyProgress progress}) async {}
+
+  @override
+  Future<DailyProgress?> getDailyProgress(
+          {required String userId, required String date}) async =>
+      null;
+
+  @override
+  Future<void> logAiEvent(
+      {required String userId, required AiEvent event}) async {}
 }
