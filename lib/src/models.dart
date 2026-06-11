@@ -1,4 +1,12 @@
-enum AppStage { welcome, intro, auth, verifyOtp, onboarding, generatingPlan, home }
+enum AppStage {
+  welcome,
+  intro,
+  auth,
+  verifyOtp,
+  onboarding,
+  generatingPlan,
+  home
+}
 
 enum UserStatus {
   pendingOnboarding,
@@ -103,7 +111,8 @@ class FitnessSurvey {
   final String preferredWorkoutTime; // morning | afternoon | evening | flexible
   final String injuries;
   final String medicalNotes;
-  final String dietType; // balanced | high-protein | mediterranean | low-carb | plant-forward | keto
+  final String
+      dietType; // balanced | high-protein | mediterranean | low-carb | plant-forward | keto
   final String mealFrequency;
   final int cookingTimeMinutes;
   final String budget; // low | moderate | premium
@@ -829,7 +838,8 @@ class WorkoutDay {
         dayNumber: json['dayNumber'] as int? ?? 1,
         focusVi: json['focusVi'] as String? ?? '',
         exercises: (json['exercises'] as List<dynamic>?)
-                ?.map((e) => WorkoutExercise.fromJson(e as Map<String, dynamic>))
+                ?.map(
+                    (e) => WorkoutExercise.fromJson(e as Map<String, dynamic>))
                 .toList() ??
             [],
       );
@@ -869,6 +879,45 @@ class OrderSummary {
   final int itemCount;
   final int totalK;
   final String statusLabel;
+}
+
+class PaymentOrder {
+  const PaymentOrder({
+    required this.orderId,
+    required this.reference,
+    required this.qrUrl,
+    required this.bankName,
+    required this.accountNumber,
+    required this.accountOwner,
+    required this.expiresAt,
+    required this.amountVnd,
+    this.packId,
+    this.tokenAmount,
+  });
+
+  final String orderId;
+  final String reference;
+  final String qrUrl;
+  final String bankName;
+  final String accountNumber;
+  final String accountOwner;
+  final String expiresAt;
+  final int amountVnd;
+  final String? packId;
+  final int? tokenAmount;
+
+  factory PaymentOrder.fromJson(Map<String, dynamic> json) => PaymentOrder(
+        orderId: json['orderId'] as String? ?? json['id'] as String? ?? '',
+        reference: json['reference'] as String? ?? '',
+        qrUrl: json['qrUrl'] as String? ?? '',
+        bankName: json['bankName'] as String? ?? '',
+        accountNumber: json['accountNumber'] as String? ?? '',
+        accountOwner: json['accountOwner'] as String? ?? '',
+        expiresAt: json['expiresAt'] as String? ?? '',
+        amountVnd: (json['amountVnd'] as num?)?.toInt() ?? 0,
+        packId: json['packId'] as String?,
+        tokenAmount: (json['tokenAmount'] as num?)?.toInt(),
+      );
 }
 
 extension GoalTypeLabel on GoalType {
@@ -1064,6 +1113,7 @@ class OnboardingProgress {
 }
 
 enum AiPlanType { meal, workout, max }
+
 enum AiPlanStatus { generating, ready, failed }
 
 class AiPlan {

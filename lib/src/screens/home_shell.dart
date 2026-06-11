@@ -38,6 +38,57 @@ void _showFoodScanSheet(BuildContext context,
   );
 }
 
+Future<void> _openTokenTopupPayment(
+  BuildContext context, {
+  required TokenPack pack,
+  required VoidCallback onSuccessPop,
+  String timeoutMessage = 'Đã huỷ - không nhận được thanh toán.',
+}) async {
+  final controller = CoreHealthScope.of(context);
+  final messenger = ScaffoldMessenger.of(context);
+  final navigator = Navigator.of(context);
+  final order = await controller.createTokenTopupOrder(pack);
+  if (!context.mounted) return;
+  if (order == null) {
+    messenger.showSnackBar(
+      const SnackBar(
+        content: Text('Không tạo được đơn nạp token. Vui lòng thử lại.'),
+        backgroundColor: Colors.orange,
+      ),
+    );
+    return;
+  }
+
+  await navigator.push(
+    MaterialPageRoute<void>(
+      builder: (_) => PaymentScreen(
+        amountK: (order.amountVnd / 1000).ceil(),
+        description: '${pack.title} token pack - ${pack.tokens} token',
+        paymentOrder: order,
+        onSuccess: () {
+          unawaited(controller.refreshAccountFromBackend());
+          onSuccessPop();
+          messenger.showSnackBar(
+            SnackBar(
+              content: Text(
+                'Đã xác nhận nạp ${order.tokenAmount ?? pack.tokens} token.',
+              ),
+            ),
+          );
+        },
+        onTimeout: () {
+          messenger.showSnackBar(
+            SnackBar(
+              content: Text(timeoutMessage),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        },
+      ),
+    ),
+  );
+}
+
 void _openAiChatPage(BuildContext context) {
   Navigator.of(context).push(
     MaterialPageRoute<void>(builder: (_) => const AiChatScreen()),
@@ -306,36 +357,14 @@ class _HomeShellState extends State<HomeShell> {
           },
           onPayment: (pack) {
             final navigator = Navigator.of(sheetContext);
-            final messenger = ScaffoldMessenger.of(context);
             navigator.pop();
-            Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (_) => PaymentScreen(
-                  amountK: pack.priceK,
-                  description:
-                      '${pack.title} token pack - ${pack.tokens} token',
-                  onSuccess: () {
-                    controller.activateTokenPack(pack);
-                    Navigator.of(context).pop();
-                    messenger.showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          'Đã nạp ${pack.tokens} token vào ví CoreHealth.',
-                        ),
-                      ),
-                    );
-                  },
-                  onTimeout: () {
-                    messenger.showSnackBar(
-                      const SnackBar(
-                        content: Text(
-                          'Chưa nhận được thanh toán. Token miễn phí vẫn ở trong ví của bạn.',
-                        ),
-                        backgroundColor: Colors.orange,
-                      ),
-                    );
-                  },
-                ),
+            unawaited(
+              _openTokenTopupPayment(
+                context,
+                pack: pack,
+                onSuccessPop: () => Navigator.of(context).pop(),
+                timeoutMessage:
+                    'Chưa nhận được thanh toán. Token miễn phí vẫn ở trong ví của bạn.',
               ),
             );
           },
@@ -6491,6 +6520,7 @@ Future<void> _showUpgradeSheet(BuildContext context) async {
         (pack) => pack.recommended,
         orElse: () => tokenPacks.first,
       );
+      var creatingOrder = false;
 
       return StatefulBuilder(
         builder: (context, setModalState) {
@@ -6602,45 +6632,37 @@ Future<void> _showUpgradeSheet(BuildContext context) async {
                       Padding(
                         padding: const EdgeInsets.fromLTRB(20, 6, 20, 20),
                         child: GradientActionButton(
-                          label:
-                              'Nạp ${selectedPack.tokens} token - ${selectedPack.priceK}k VNĐ',
-                          icon: const Icon(
-                            Icons.toll_rounded,
-                            size: 18,
-                          ),
-                          onPressed: () {
-                            Navigator.of(context).push(
-                              MaterialPageRoute<void>(
-                                builder: (_) => PaymentScreen(
-                                  amountK: selectedPack.priceK,
-                                  description:
-                                      '${selectedPack.title} token pack - ${selectedPack.tokens} token',
-                                  onSuccess: () {
-                                    controller.activateTokenPack(selectedPack);
-                                    Navigator.of(context)
-                                      ..pop()
-                                      ..pop();
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text(
-                                          'Đã nạp ${selectedPack.tokens} token.',
-                                        ),
-                                      ),
-                                    );
-                                  },
-                                  onTimeout: () {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text(
-                                          'Đã huỷ — không nhận được thanh toán.',
-                                        ),
-                                        backgroundColor: Colors.orange,
-                                      ),
-                                    );
-                                  },
+                          label: creatingOrder
+                              ? 'Đang tạo đơn nạp token...'
+                              : 'Nạp ${selectedPack.tokens} token - ${selectedPack.priceK}k VNĐ',
+                          icon: creatingOrder
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Icon(
+                                  Icons.toll_rounded,
+                                  size: 18,
                                 ),
-                              ),
+                          onPressed: () async {
+                            if (creatingOrder) return;
+                            setModalState(() => creatingOrder = true);
+                            await _openTokenTopupPayment(
+                              context,
+                              pack: selectedPack,
+                              onSuccessPop: () {
+                                Navigator.of(context)
+                                  ..pop()
+                                  ..pop();
+                              },
                             );
+                            if (context.mounted) {
+                              setModalState(() => creatingOrder = false);
+                            }
                           },
                           colors: const [
                             AppPalette.emerald,

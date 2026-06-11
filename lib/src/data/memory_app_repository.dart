@@ -632,6 +632,57 @@ class MemoryAppRepository implements AppRepository {
   }
 
   @override
+  Future<PaymentOrder> createShopPaymentOrder({
+    required String userId,
+    required List<Product> items,
+    required String deliveryName,
+    required String deliveryPhone,
+    required String deliveryAddress,
+    String? deliveryEmail,
+    String? wardCode,
+    int? districtId,
+    String? voucherCode,
+  }) async {
+    final now = DateTime.now();
+    final reference =
+        'CH${now.day.toString().padLeft(2, '0')}${now.month.toString().padLeft(2, '0')}${now.millisecond.toString().padLeft(3, '0')}';
+    final amountVnd =
+        items.fold<int>(0, (sum, item) => sum + (item.priceK * 1000));
+    return PaymentOrder(
+      orderId: 'offline-${now.microsecondsSinceEpoch}',
+      reference: reference,
+      qrUrl: '',
+      bankName: 'MB Bank',
+      accountNumber: '4444815072005',
+      accountOwner: 'NGUYEN HUU TUNG',
+      expiresAt: now.add(const Duration(minutes: 10)).toIso8601String(),
+      amountVnd: amountVnd,
+    );
+  }
+
+  @override
+  Future<PaymentOrder> createTokenTopupOrder({
+    required String userId,
+    required TokenPack pack,
+  }) async {
+    final now = DateTime.now();
+    final reference =
+        'CH${now.day.toString().padLeft(2, '0')}${now.month.toString().padLeft(2, '0')}${now.millisecond.toString().padLeft(3, '0')}';
+    return PaymentOrder(
+      orderId: 'topup-${now.microsecondsSinceEpoch}',
+      reference: reference,
+      qrUrl: '',
+      bankName: 'MB Bank',
+      accountNumber: '4444815072005',
+      accountOwner: 'NGUYEN HUU TUNG',
+      expiresAt: now.add(const Duration(minutes: 10)).toIso8601String(),
+      amountVnd: pack.priceK * 1000,
+      packId: pack.idValue,
+      tokenAmount: pack.tokens,
+    );
+  }
+
+  @override
   Future<void> signOut() async {
     _currentUserId = null;
   }
@@ -684,7 +735,8 @@ class MemoryAppRepository implements AppRepository {
   // Architecture V2: AI Synchronization Methods (In-memory stubs)
 
   @override
-  Future<void> savePlanGeneration({required String userId, required PlanGeneration generation}) async {
+  Future<void> savePlanGeneration(
+      {required String userId, required PlanGeneration generation}) async {
     // Stub
   }
 
@@ -694,27 +746,42 @@ class MemoryAppRepository implements AppRepository {
   }
 
   @override
-  Future<void> saveMealPlan({required String userId, required String generationId, required int dayIndex, required MealPlanDay plan}) async {
+  Future<void> saveMealPlan(
+      {required String userId,
+      required String generationId,
+      required int dayIndex,
+      required MealPlanDay plan}) async {
     // Stub
   }
 
   @override
-  Future<MealPlanDay?> getMealPlan({required String userId, required int version, required int dayIndex}) async {
+  Future<MealPlanDay?> getMealPlan(
+      {required String userId,
+      required int version,
+      required int dayIndex}) async {
     return null; // Stub
   }
 
   @override
-  Future<void> saveWorkoutPlan({required String userId, required String generationId, required int dayIndex, required WorkoutDay plan}) async {
+  Future<void> saveWorkoutPlan(
+      {required String userId,
+      required String generationId,
+      required int dayIndex,
+      required WorkoutDay plan}) async {
     // Stub
   }
 
   @override
-  Future<WorkoutDay?> getWorkoutPlan({required String userId, required int version, required int dayIndex}) async {
+  Future<WorkoutDay?> getWorkoutPlan(
+      {required String userId,
+      required int version,
+      required int dayIndex}) async {
     return null; // Stub
   }
 
   @override
-  Future<void> saveShoppingItems({required String userId, required List<ShoppingItem> items}) async {
+  Future<void> saveShoppingItems(
+      {required String userId, required List<ShoppingItem> items}) async {
     // Stub
   }
 
@@ -724,17 +791,20 @@ class MemoryAppRepository implements AppRepository {
   }
 
   @override
-  Future<void> saveDailyProgress({required String userId, required DailyProgress progress}) async {
+  Future<void> saveDailyProgress(
+      {required String userId, required DailyProgress progress}) async {
     // Stub
   }
 
   @override
-  Future<DailyProgress?> getDailyProgress({required String userId, required String date}) async {
+  Future<DailyProgress?> getDailyProgress(
+      {required String userId, required String date}) async {
     return null; // Stub
   }
 
   @override
-  Future<void> logAiEvent({required String userId, required AiEvent event}) async {
+  Future<void> logAiEvent(
+      {required String userId, required AiEvent event}) async {
     // Stub
   }
 

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../app_controller.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../widgets/adaptive.dart';
@@ -39,6 +40,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   final _phoneCtrl = TextEditingController();
   final _addressCtrl = TextEditingController();
   final _formKey = GlobalKey<FormState>();
+  bool _creatingOrder = false;
 
   @override
   void dispose() {
@@ -48,13 +50,33 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     super.dispose();
   }
 
-  void _proceedToPayment() {
+  Future<void> _proceedToPayment() async {
     if (!_formKey.currentState!.validate()) return;
+    final controller = CoreHealthScope.of(context);
+    setState(() => _creatingOrder = true);
+    final paymentOrder = await controller.createShopPaymentOrder(
+      items: widget.items,
+      deliveryName: _nameCtrl.text.trim(),
+      deliveryPhone: _phoneCtrl.text.trim(),
+      deliveryAddress: _addressCtrl.text.trim(),
+    );
+    if (!mounted) return;
+    setState(() => _creatingOrder = false);
+    if (paymentOrder == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Không thể tạo đơn thanh toán. Vui lòng thử lại.'),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
+      return;
+    }
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => PaymentScreen(
-          amountK: widget.totalK,
+          amountK: (paymentOrder.amountVnd / 1000).ceil(),
           description: 'Đặt hàng CoreHealth Shop',
+          paymentOrder: paymentOrder,
           onSuccess: () {
             widget.onSuccess();
             Navigator.of(context).pop();
@@ -276,8 +298,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           padding: EdgeInsets.fromLTRB(
               layout.horizontalPadding, 10, layout.horizontalPadding, 14),
           child: AppActionButton(
-            label: 'Tiến hành thanh toán • ${_fmtVnd(widget.totalK)}',
-            onPressed: _proceedToPayment,
+            label: _creatingOrder
+                ? 'Đang tạo đơn thanh toán...'
+                : 'Tiến hành thanh toán • ${_fmtVnd(widget.totalK)}',
+            onPressed: _creatingOrder ? null : _proceedToPayment,
             icon: const Icon(Icons.payment_rounded),
           ),
         ),

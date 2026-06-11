@@ -82,6 +82,21 @@ abstract class AppRepository {
     required String userId,
     required Set<String> productIds,
   });
+  Future<PaymentOrder> createShopPaymentOrder({
+    required String userId,
+    required List<Product> items,
+    required String deliveryName,
+    required String deliveryPhone,
+    required String deliveryAddress,
+    String? deliveryEmail,
+    String? wardCode,
+    int? districtId,
+    String? voucherCode,
+  });
+  Future<PaymentOrder> createTokenTopupOrder({
+    required String userId,
+    required TokenPack pack,
+  });
   Future<void> signOut();
   Future<void> insertMealLog({required String userId, required MealLog log});
   Future<List<MealLog>> getMealLogsForDate(
@@ -94,20 +109,34 @@ abstract class AppRepository {
       {required String userId, required String sessionId});
 
   // Architecture V2: AI Synchronization
-  Future<void> savePlanGeneration({required String userId, required PlanGeneration generation});
+  Future<void> savePlanGeneration(
+      {required String userId, required PlanGeneration generation});
   Future<PlanGeneration?> getCurrentGeneration({required String userId});
-  
-  Future<void> saveMealPlan({required String userId, required String generationId, required int dayIndex, required MealPlanDay plan});
-  Future<MealPlanDay?> getMealPlan({required String userId, required int version, required int dayIndex});
-  
-  Future<void> saveWorkoutPlan({required String userId, required String generationId, required int dayIndex, required WorkoutDay plan});
-  Future<WorkoutDay?> getWorkoutPlan({required String userId, required int version, required int dayIndex});
 
-  Future<void> saveShoppingItems({required String userId, required List<ShoppingItem> items});
+  Future<void> saveMealPlan(
+      {required String userId,
+      required String generationId,
+      required int dayIndex,
+      required MealPlanDay plan});
+  Future<MealPlanDay?> getMealPlan(
+      {required String userId, required int version, required int dayIndex});
+
+  Future<void> saveWorkoutPlan(
+      {required String userId,
+      required String generationId,
+      required int dayIndex,
+      required WorkoutDay plan});
+  Future<WorkoutDay?> getWorkoutPlan(
+      {required String userId, required int version, required int dayIndex});
+
+  Future<void> saveShoppingItems(
+      {required String userId, required List<ShoppingItem> items});
   Future<List<ShoppingItem>> getShoppingItems({required String userId});
 
-  Future<void> saveDailyProgress({required String userId, required DailyProgress progress});
-  Future<DailyProgress?> getDailyProgress({required String userId, required String date});
+  Future<void> saveDailyProgress(
+      {required String userId, required DailyProgress progress});
+  Future<DailyProgress?> getDailyProgress(
+      {required String userId, required String date});
 
   Future<void> logAiEvent({required String userId, required AiEvent event});
 }

@@ -16,9 +16,9 @@ import 'services/shopping_list_generator.dart';
 import 'services/ai_command_processor.dart';
 
 class AppController extends ChangeNotifier {
-  AppController({required AppRepository repository})
+  AppController({required AppRepository repository, AiService? aiService})
       : _repository = repository,
-        _aiService = AiService();
+        _aiService = aiService ?? AiService();
 
   static const _showIntroOnLaunch = bool.fromEnvironment(
     'COREHEALTH_SHOW_INTRO_ON_LAUNCH',
@@ -87,7 +87,8 @@ class AppController extends ChangeNotifier {
   OnboardingProgress get onboardingProgress => _onboardingProgress;
   DemoProfile get profile => _profile;
   List<WeightEntry> get weightHistory => List.unmodifiable(_weightHistory);
-  List<MealItem> get todayMeals => _currentMealPlan?.meals ?? DemoData.todayMeals;
+  List<MealItem> get todayMeals =>
+      _currentMealPlan?.meals ?? DemoData.todayMeals;
   List<OrderSummary> get orders => List.unmodifiable(_orders);
   List<Product> get cart => List.unmodifiable(_cart);
   List<Product> get products => List.unmodifiable(_products);
@@ -101,7 +102,8 @@ class AppController extends ChangeNotifier {
           .map((e) => Product(
                 id: (e['id'] ?? '').toString(),
                 nameVi: (e['name_vi'] ?? e['nameVi'] ?? '').toString(),
-                categoryId: (e['category_id'] ?? e['categoryId'] ?? '').toString(),
+                categoryId:
+                    (e['category_id'] ?? e['categoryId'] ?? '').toString(),
                 unit: (e['unit'] ?? '').toString(),
                 priceK: ((e['price_k'] ?? e['priceK']) as num?)?.toInt() ?? 0,
                 imageUrl: (e['image_url'] ?? e['imageUrl'] ?? '').toString(),
@@ -113,6 +115,7 @@ class AppController extends ChangeNotifier {
       // Backend unreachable — keep the DemoData fallback.
     }
   }
+
   List<TokenTransaction> get tokenTransactions =>
       List.unmodifiable(_tokenTransactions);
   UserSettings get settings => _settings;
@@ -128,7 +131,7 @@ class AppController extends ChangeNotifier {
   bool get insightsLoading => _insightsLoading;
   bool get isMealPlanGenerating => _mealPlanGenerating;
   bool get isWorkoutPlanGenerating => _workoutPlanGenerating;
-  
+
   PlanGeneration? get currentGeneration => _currentGeneration;
   MealPlanDay? get currentMealPlan => _currentMealPlan;
   WorkoutDay? get currentWorkoutPlan => _currentWorkoutPlan;
@@ -265,28 +268,32 @@ class AppController extends ChangeNotifier {
     _currentGeneration = await _repository.getCurrentGeneration(userId: userId);
     if (_currentGeneration != null) {
       final genVersion = _currentGeneration!.version;
-      
+
       final meals = <MealPlanDay>[];
       final workouts = <WorkoutDay>[];
       for (int i = 1; i <= 30; i++) {
-        final m = await _repository.getMealPlan(userId: userId, version: genVersion, dayIndex: i);
+        final m = await _repository.getMealPlan(
+            userId: userId, version: genVersion, dayIndex: i);
         if (m != null) meals.add(m);
-        final w = await _repository.getWorkoutPlan(userId: userId, version: genVersion, dayIndex: i);
+        final w = await _repository.getWorkoutPlan(
+            userId: userId, version: genVersion, dayIndex: i);
         if (w != null) workouts.add(w);
       }
       _generationMealPlans = meals;
       _generationWorkoutPlans = workouts;
-      
+
       _currentMealPlan = await _repository.getMealPlan(
           userId: userId, version: genVersion, dayIndex: _currentDayIndex);
       _currentWorkoutPlan = await _repository.getWorkoutPlan(
           userId: userId, version: genVersion, dayIndex: _currentDayIndex);
       _shoppingItems = await _repository.getShoppingItems(userId: userId);
     }
-    
-    final dateStr = '${DateTime.now().year}-${DateTime.now().month.toString().padLeft(2, '0')}-${DateTime.now().day.toString().padLeft(2, '0')}';
-    _todayProgress = await _repository.getDailyProgress(userId: userId, date: dateStr);
-    
+
+    final dateStr =
+        '${DateTime.now().year}-${DateTime.now().month.toString().padLeft(2, '0')}-${DateTime.now().day.toString().padLeft(2, '0')}';
+    _todayProgress =
+        await _repository.getDailyProgress(userId: userId, date: dateStr);
+
     notifyListeners();
   }
 
@@ -607,9 +614,8 @@ class AppController extends ChangeNotifier {
       _stage = AppStage.generatingPlan;
       notifyListeners();
       _refreshInsightsBackground();
-      
-      // Simulate plan generation in background
-      unawaited(_simulatePlanGeneration());
+
+      unawaited(_generateInitialPlansAfterOnboarding());
       return null;
     } catch (e, st) {
       debugPrint('finishOnboarding error: $e\n$st');
@@ -617,15 +623,28 @@ class AppController extends ChangeNotifier {
     }
   }
 
-  Future<void> _simulatePlanGeneration() async {
-    await Future.delayed(const Duration(seconds: 4)); // mock AI generation time
+  Future<void> _generateInitialPlansAfterOnboarding() async {
     final session = _session;
     if (session == null) return;
-    
-    // Once plan is generated, user status becomes active
+
+    try {
+      if (_profile.hasMealPlan) {
+        await generateAiMealPlan();
+      }
+      if (_profile.hasWorkoutPlan) {
+        await generateAiWorkoutPlan();
+      }
+    } catch (e, st) {
+      debugPrint('Initial plan generation error: $e\n$st');
+    }
+
+    final latestSession = _session;
+    if (latestSession == null || latestSession.userId != session.userId) {
+      return;
+    }
     _session = AppUserSession(
-      userId: session.userId,
-      email: session.email,
+      userId: latestSession.userId,
+      email: latestSession.email,
       status: UserStatus.active,
     );
     _stage = AppStage.home;
@@ -638,7 +657,8 @@ class AppController extends ChangeNotifier {
     await Future.delayed(const Duration(milliseconds: 300));
     _onboardingProgress = OnboardingProgress(
       currentStep: step,
-      completedSteps: <int>{..._onboardingProgress.completedSteps, step}.toList(),
+      completedSteps:
+          <int>{..._onboardingProgress.completedSteps, step}.toList(),
       isCompleted: false,
     );
     notifyListeners();
@@ -650,7 +670,7 @@ class AppController extends ChangeNotifier {
     if (_mealPlanGenerating || !profile.hasMealPlan) return false;
     _mealPlanGenerating = true;
     notifyListeners();
-    
+
     final tpl = await _aiService.generateMealPlan(profile);
     if (tpl.isNotEmpty) {
       final version = (_currentGeneration?.version ?? 0) + 1;
@@ -662,34 +682,44 @@ class AppController extends ChangeNotifier {
         createdAt: DateTime.now(),
       );
       await _repository.savePlanGeneration(userId: userId, generation: gen);
-      
+
       final allDays = <MealPlanDay>[];
       for (int i = 0; i < 30; i++) {
-        final dayPlan = MealPlanDay(dayNumber: i + 1, meals: tpl[i % tpl.length].meals);
+        final dayPlan =
+            MealPlanDay(dayNumber: i + 1, meals: tpl[i % tpl.length].meals);
         allDays.add(dayPlan);
-        await _repository.saveMealPlan(userId: userId, generationId: gen.id, dayIndex: i + 1, plan: dayPlan);
+        await _repository.saveMealPlan(
+            userId: userId,
+            generationId: gen.id,
+            dayIndex: i + 1,
+            plan: dayPlan);
       }
-      
+
       if (_currentGeneration != null) {
         for (int i = 0; i < 30; i++) {
-          final w = await _repository.getWorkoutPlan(userId: userId, version: _currentGeneration!.version, dayIndex: i + 1);
+          final w = await _repository.getWorkoutPlan(
+              userId: userId,
+              version: _currentGeneration!.version,
+              dayIndex: i + 1);
           if (w != null) {
-            await _repository.saveWorkoutPlan(userId: userId, generationId: gen.id, dayIndex: i + 1, plan: w);
+            await _repository.saveWorkoutPlan(
+                userId: userId, generationId: gen.id, dayIndex: i + 1, plan: w);
           }
         }
       }
-      
+
       _currentGeneration = gen;
       _generationMealPlans = allDays;
       if (_currentDayIndex >= 1 && _currentDayIndex <= 30) {
         _currentMealPlan = allDays[_currentDayIndex - 1];
-        _currentWorkoutPlan = await _repository.getWorkoutPlan(userId: userId, version: gen.version, dayIndex: _currentDayIndex);
+        _currentWorkoutPlan = await _repository.getWorkoutPlan(
+            userId: userId, version: gen.version, dayIndex: _currentDayIndex);
       }
-      
+
       final items = ShoppingListGenerator.generate(userId, allDays);
       await _repository.saveShoppingItems(userId: userId, items: items);
       _shoppingItems = items;
-      
+
       _spendTokens(TokenCosts.fullDayMealPlan);
     }
     _mealPlanGenerating = false;
@@ -703,7 +733,7 @@ class AppController extends ChangeNotifier {
     if (_workoutPlanGenerating || !profile.hasWorkoutPlan) return false;
     _workoutPlanGenerating = true;
     notifyListeners();
-    
+
     final tpl = await _aiService.generateWorkoutPlan(profile);
     if (tpl.isNotEmpty) {
       final version = (_currentGeneration?.version ?? 0) + 1;
@@ -715,40 +745,50 @@ class AppController extends ChangeNotifier {
         createdAt: DateTime.now(),
       );
       await _repository.savePlanGeneration(userId: userId, generation: gen);
-      
+
       for (int i = 0; i < 30; i++) {
         final dayPlan = WorkoutDay(
-          dayNumber: i + 1, 
-          focusVi: tpl[i % tpl.length].focusVi, 
-          exercises: tpl[i % tpl.length].exercises
-        );
-        await _repository.saveWorkoutPlan(userId: userId, generationId: gen.id, dayIndex: i + 1, plan: dayPlan);
+            dayNumber: i + 1,
+            focusVi: tpl[i % tpl.length].focusVi,
+            exercises: tpl[i % tpl.length].exercises);
+        await _repository.saveWorkoutPlan(
+            userId: userId,
+            generationId: gen.id,
+            dayIndex: i + 1,
+            plan: dayPlan);
       }
-      
+
       if (_currentGeneration != null) {
         for (int i = 0; i < 30; i++) {
-          final m = await _repository.getMealPlan(userId: userId, version: _currentGeneration!.version, dayIndex: i + 1);
+          final m = await _repository.getMealPlan(
+              userId: userId,
+              version: _currentGeneration!.version,
+              dayIndex: i + 1);
           if (m != null) {
-            await _repository.saveMealPlan(userId: userId, generationId: gen.id, dayIndex: i + 1, plan: m);
+            await _repository.saveMealPlan(
+                userId: userId, generationId: gen.id, dayIndex: i + 1, plan: m);
           }
         }
       }
-      
+
       _currentGeneration = gen;
-      
+
       // Load into lists
       final workouts = <WorkoutDay>[];
       for (int i = 1; i <= 30; i++) {
-        final w = await _repository.getWorkoutPlan(userId: userId, version: gen.version, dayIndex: i);
+        final w = await _repository.getWorkoutPlan(
+            userId: userId, version: gen.version, dayIndex: i);
         if (w != null) workouts.add(w);
       }
       _generationWorkoutPlans = workouts;
-      
+
       if (_currentDayIndex >= 1 && _currentDayIndex <= 30) {
-        _currentWorkoutPlan = await _repository.getWorkoutPlan(userId: userId, version: gen.version, dayIndex: _currentDayIndex);
-        _currentMealPlan = await _repository.getMealPlan(userId: userId, version: gen.version, dayIndex: _currentDayIndex);
+        _currentWorkoutPlan = await _repository.getWorkoutPlan(
+            userId: userId, version: gen.version, dayIndex: _currentDayIndex);
+        _currentMealPlan = await _repository.getMealPlan(
+            userId: userId, version: gen.version, dayIndex: _currentDayIndex);
       }
-      
+
       _spendTokens(TokenCosts.adaptiveWeeklyPlan);
     }
     _workoutPlanGenerating = false;
@@ -856,16 +896,16 @@ class AppController extends ChangeNotifier {
     if (session == null) return 'Phiên đăng nhập không hợp lệ.';
     try {
       final goalChanged = _profile.goal != updatedProfile.goal ||
-                          _profile.weightKg != updatedProfile.weightKg ||
-                          _profile.heightCm != updatedProfile.heightCm ||
-                          _profile.activityLevel != updatedProfile.activityLevel;
-      
+          _profile.weightKg != updatedProfile.weightKg ||
+          _profile.heightCm != updatedProfile.heightCm ||
+          _profile.activityLevel != updatedProfile.activityLevel;
+
       final userData = await _repository.saveOnboardingProfile(
         userId: session.userId,
         profile: updatedProfile,
       );
       _applyUserData(userData, notify: true);
-      
+
       if (goalChanged) {
         _session = AppUserSession(
           userId: session.userId,
@@ -874,9 +914,9 @@ class AppController extends ChangeNotifier {
         );
         _stage = AppStage.generatingPlan;
         notifyListeners();
-        unawaited(_simulatePlanGeneration());
+        unawaited(_generateInitialPlansAfterOnboarding());
       }
-      
+
       return null;
     } catch (e) {
       return 'Không thể lưu thông tin.';
@@ -920,6 +960,63 @@ class AppController extends ChangeNotifier {
     });
   }
 
+  Future<PaymentOrder?> createShopPaymentOrder({
+    required List<Product> items,
+    required String deliveryName,
+    required String deliveryPhone,
+    required String deliveryAddress,
+  }) async {
+    final userId = _session?.userId;
+    if (userId == null || items.isEmpty) {
+      return null;
+    }
+    try {
+      return await _repository.createShopPaymentOrder(
+        userId: userId,
+        items: items,
+        deliveryName: deliveryName,
+        deliveryPhone: deliveryPhone,
+        deliveryAddress: deliveryAddress,
+        deliveryEmail: _session?.email,
+      );
+    } catch (e, st) {
+      debugPrint('createShopPaymentOrder error: $e\n$st');
+      return null;
+    }
+  }
+
+  Future<PaymentOrder?> createTokenTopupOrder(TokenPack pack) async {
+    final userId = _session?.userId;
+    if (userId == null) {
+      return null;
+    }
+    try {
+      return await _repository.createTokenTopupOrder(
+        userId: userId,
+        pack: pack,
+      );
+    } catch (e, st) {
+      debugPrint('createTokenTopupOrder error: $e\n$st');
+      return null;
+    }
+  }
+
+  Future<void> refreshAccountFromBackend() async {
+    try {
+      final bootstrap = await _repository.bootstrap();
+      if (bootstrap.session != null) {
+        _session = bootstrap.session;
+      }
+      if (bootstrap.userData != null) {
+        _applyUserData(bootstrap.userData!, notify: false);
+      }
+      await _loadTokenTransactions();
+      notifyListeners();
+    } catch (e, st) {
+      debugPrint('refreshAccountFromBackend error: $e\n$st');
+    }
+  }
+
   void updateSubscription(SubscriptionPlan plan, {required int months}) {
     _enqueueMutation((userId) {
       return _repository.updateSubscription(
@@ -928,35 +1025,6 @@ class AppController extends ChangeNotifier {
         months: months,
       );
     });
-  }
-
-  void activateTokenPack(TokenPack pack) {
-    final transaction = TokenTransaction(
-      id: _generateTransactionId('pack'),
-      amount: pack.tokens,
-      priceK: pack.priceK,
-      description: 'Nạp gói ${pack.title}',
-      createdAt: DateTime.now(),
-    );
-    final updatedProfile = _profile.copyWith(
-      tokenBalance: _profile.tokenBalance + pack.tokens,
-      tokenEarned: _profile.tokenEarned + pack.tokens,
-      plan: SubscriptionPlan.free,
-      subscriptionMonths: 0,
-      subscriptionStartDate: null,
-    );
-    _profile = updatedProfile;
-    _tokenTransactions = [transaction, ..._tokenTransactions];
-    notifyListeners();
-    _enqueueMutation((userId) {
-      return _repository.updateTokenWallet(
-        userId: userId,
-        tokenBalance: updatedProfile.tokenBalance,
-        tokenEarned: updatedProfile.tokenEarned,
-        tokenSpent: updatedProfile.tokenSpent,
-      );
-    });
-    unawaited(_persistTokenTransaction(transaction));
   }
 
   Future<String?> claimCoreHealthMaxTrial() async {
@@ -1035,7 +1103,7 @@ class AppController extends ChangeNotifier {
       }
       return data;
     });
-    
+
     if (dayNumber == _currentDayIndex) {
       logDailyProgress();
     }
@@ -1048,7 +1116,7 @@ class AppController extends ChangeNotifier {
         dayNumber: dayNumber,
       );
     });
-    
+
     if (dayNumber == _currentDayIndex) {
       logDailyProgress();
     }
@@ -1057,20 +1125,24 @@ class AppController extends ChangeNotifier {
   Future<void> logDailyProgress() async {
     final userId = _session?.userId;
     if (userId == null) return;
-    
-    final dateStr = '${DateTime.now().year}-${DateTime.now().month.toString().padLeft(2, '0')}-${DateTime.now().day.toString().padLeft(2, '0')}';
-    
+
+    final dateStr =
+        '${DateTime.now().year}-${DateTime.now().month.toString().padLeft(2, '0')}-${DateTime.now().day.toString().padLeft(2, '0')}';
+
     final hasLoggedMeals = _todayMealLogs.isNotEmpty;
-    final mealStatus = hasLoggedMeals ? ProgressStatus.completed : ProgressStatus.not_started;
-    
+    final mealStatus =
+        hasLoggedMeals ? ProgressStatus.completed : ProgressStatus.not_started;
+
     final isWorkoutCompleted = _completedWorkoutDays.contains(_currentDayIndex);
-    final workoutStatus = isWorkoutCompleted ? ProgressStatus.completed : ProgressStatus.not_started;
-    
+    final workoutStatus = isWorkoutCompleted
+        ? ProgressStatus.completed
+        : ProgressStatus.not_started;
+
     int eatenCal = 0;
     for (final m in _todayMealLogs) {
       eatenCal += m.calories;
     }
-    
+
     final progress = DailyProgress(
       id: 'prog_${userId}_$dateStr',
       userId: userId,
@@ -1082,10 +1154,13 @@ class AppController extends ChangeNotifier {
       waterIntake: _todayProgress?.waterIntake ?? 0,
       steps: _todayProgress?.steps ?? 0,
       sleepHours: _todayProgress?.sleepHours ?? 0,
-      completionScore: (mealStatus == ProgressStatus.completed && workoutStatus == ProgressStatus.completed) ? 100 : 50,
+      completionScore: (mealStatus == ProgressStatus.completed &&
+              workoutStatus == ProgressStatus.completed)
+          ? 100
+          : 50,
       createdAt: DateTime.now(),
     );
-    
+
     await _repository.saveDailyProgress(userId: userId, progress: progress);
     _todayProgress = progress;
     notifyListeners();
@@ -1431,19 +1506,19 @@ class AppController extends ChangeNotifier {
   void declineAiAdjustment(String sessionId, int msgIndex) {
     final existingIndex = _chatSessions.indexWhere((s) => s.id == sessionId);
     if (existingIndex == -1) return;
-    
+
     final session = _chatSessions[existingIndex];
     if (msgIndex < 0 || msgIndex >= session.history.length) return;
-    
+
     final oldMsg = session.history[msgIndex];
     final parts = oldMsg.text.split('---ADJUSTMENT---');
     if (parts.length < 2) return;
-    
+
     final newText = '${parts[0].trim()}\n\n💼 Đã giữ nguyên kế hoạch hiện tại.';
-    
+
     final newHistory = List<ChatMessage>.from(session.history);
     newHistory[msgIndex] = oldMsg.copyWith(text: newText);
-    
+
     final newSession = ChatSession(
       id: session.id,
       title: session.title,
@@ -1451,7 +1526,7 @@ class AppController extends ChangeNotifier {
       history: newHistory,
       category: session.category,
     );
-    
+
     _chatSessions = [
       ..._chatSessions.sublist(0, existingIndex),
       newSession,
@@ -1464,17 +1539,18 @@ class AppController extends ChangeNotifier {
     }
   }
 
-  Future<void> applyAiAdjustment(String sessionId, int msgIndex, Map<String, dynamic> adjustment) async {
+  Future<void> applyAiAdjustment(
+      String sessionId, int msgIndex, Map<String, dynamic> adjustment) async {
     final existingIndex = _chatSessions.indexWhere((s) => s.id == sessionId);
     if (existingIndex == -1) return;
-    
+
     final session = _chatSessions[existingIndex];
     if (msgIndex < 0 || msgIndex >= session.history.length) return;
-    
+
     final oldMsg = session.history[msgIndex];
     final parts = oldMsg.text.split('---ADJUSTMENT---');
     if (parts.length < 2) return;
-    
+
     final userId = _session?.userId;
     if (userId != null && _currentGeneration != null) {
       await AiCommandProcessor.processCommand(
@@ -1484,16 +1560,17 @@ class AppController extends ChangeNotifier {
         repository: _repository,
         currentDayIndex: _currentDayIndex,
       );
-      
+
       // Reload everything
       await _loadSyncData();
     }
-    
-    final newText = '${parts[0].trim()}\n\n✅ Đã áp dụng thay đổi vào kế hoạch của bạn.';
-    
+
+    final newText =
+        '${parts[0].trim()}\n\n✅ Đã áp dụng thay đổi vào kế hoạch của bạn.';
+
     final newHistory = List<ChatMessage>.from(session.history);
     newHistory[msgIndex] = oldMsg.copyWith(text: newText);
-    
+
     final newSession = ChatSession(
       id: session.id,
       title: session.title,
@@ -1501,7 +1578,7 @@ class AppController extends ChangeNotifier {
       history: newHistory,
       category: session.category,
     );
-    
+
     _chatSessions = [
       ..._chatSessions.sublist(0, existingIndex),
       newSession,

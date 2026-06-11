@@ -17,6 +17,7 @@ class RemoteAppRepository implements AppRepository {
 
   static const _storage = FlutterSecureStorage();
   static const _tokenKey = 'corehealth_jwt';
+  static const _planDayCount = 30;
 
   // Shared key that tells the backend to skip the web Turnstile CAPTCHA for this
   // native client (BE: X-Mobile-Captcha-Bypass). Injected at build time via
@@ -33,9 +34,18 @@ class RemoteAppRepository implements AppRepository {
   Future<AppBootstrapData> bootstrap() async {
     if (_token == null || _token!.isEmpty) return const AppBootstrapData();
     final json = await _request('GET', '/me/bootstrap');
+    final userDataJson = json['userData'] as Map<String, dynamic>;
+    final session = _session(json['session'] as Map<String, dynamic>?);
+    if (session != null) {
+      await _hydrateAiPlansFromBootstrap(
+        userId: session.userId,
+        aiPlans: userDataJson['aiPlans'],
+        profile: userDataJson['profile'],
+      );
+    }
     return AppBootstrapData(
-      session: _session(json['session'] as Map<String, dynamic>?),
-      userData: _userData(json['userData'] as Map<String, dynamic>),
+      session: session,
+      userData: _userData(userDataJson),
     );
   }
 
@@ -238,51 +248,6 @@ class RemoteAppRepository implements AppRepository {
     // refunded, or topped up. The client must not author ledger entries.
   }
 
-  Future<PersistedUserData> purchaseTokenPack({
-    required TokenPack pack,
-  }) async {
-    final json = await _request(
-      'POST',
-      '/billing/token-packs/${pack.idValue}/purchase',
-    );
-    final walletBalance = _readInt(json, 'walletBalance', pack.tokens);
-    final bootstrap = await this.bootstrap();
-    final current = bootstrap.userData;
-    if (current == null) {
-      return PersistedUserData(
-        profile: DemoProfile(
-          name: 'CoreHealth User',
-          age: 28,
-          gender: Gender.other,
-          heightCm: 168,
-          weightKg: 65,
-          targetWeightKg: 62,
-          goal: GoalType.maintain,
-          activityLevel: ActivityLevel.moderate,
-          schedule: '',
-          dietaryRestrictions: const [],
-          allergies: const [],
-          healthConditions: const [],
-          plan: SubscriptionPlan.free,
-          subscriptionMonths: 0,
-          tokenBalance: walletBalance,
-          tokenEarned: walletBalance,
-        ),
-        weightHistory: const [],
-        completedWorkoutDays: const {},
-        completedMealDays: const {},
-        cart: const [],
-        orders: const [],
-      );
-    }
-    return current.copyWith(
-      profile: current.profile.copyWith(
-        tokenBalance: walletBalance,
-        tokenEarned: current.profile.tokenEarned + pack.tokens,
-      ),
-    );
-  }
-
   @override
   Future<PersistedUserData> updateWeight({
     required String userId,
@@ -355,6 +320,54 @@ class RemoteAppRepository implements AppRepository {
       'productIds': productIds.toList(growable: false),
     });
     return _userData(json);
+  }
+
+  @override
+  Future<PaymentOrder> createShopPaymentOrder({
+    required String userId,
+    required List<Product> items,
+    required String deliveryName,
+    required String deliveryPhone,
+    required String deliveryAddress,
+    String? deliveryEmail,
+    String? wardCode,
+    int? districtId,
+    String? voucherCode,
+  }) async {
+    final itemCounts = <String, int>{};
+    for (final item in items) {
+      itemCounts[item.id] = (itemCounts[item.id] ?? 0) + 1;
+    }
+    final amountVnd =
+        items.fold<int>(0, (sum, item) => sum + (item.priceK * 1000));
+    final json = await _request('POST', '/payments/create-order', {
+      'deliveryName': deliveryName,
+      'deliveryPhone': deliveryPhone,
+      'deliveryAddress': deliveryAddress,
+      'wardCode': wardCode ?? '',
+      'districtId': districtId,
+      'deliveryEmail': deliveryEmail ?? '',
+      'voucherCode': voucherCode,
+      'discountVnd': 0,
+      'amountVnd': amountVnd,
+      'shippingFee': 0,
+      'items': itemCounts.entries
+          .map((entry) => {'id': entry.key, 'qty': entry.value})
+          .toList(growable: false),
+    });
+    return PaymentOrder.fromJson(json as Map<String, dynamic>);
+  }
+
+  @override
+  Future<PaymentOrder> createTokenTopupOrder({
+    required String userId,
+    required TokenPack pack,
+  }) async {
+    final json = await _request(
+      'POST',
+      '/billing/token-packs/${pack.idValue}/sepay',
+    );
+    return PaymentOrder.fromJson(json as Map<String, dynamic>);
   }
 
   @override
@@ -475,8 +488,12 @@ class RemoteAppRepository implements AppRepository {
     required String generationId,
     required int dayIndex,
     required MealPlanDay plan,
-  }) =>
-      _writeLocal('chg_meal_${userId}_$dayIndex', plan.toJson());
+  }) async {
+    await _writeLocal('chg_meal_${userId}_$dayIndex', plan.toJson());
+    if (dayIndex >= _planDayCount) {
+      await _syncAiPlans(userId);
+    }
+  }
 
   @override
   Future<MealPlanDay?> getMealPlan({
@@ -494,8 +511,12 @@ class RemoteAppRepository implements AppRepository {
     required String generationId,
     required int dayIndex,
     required WorkoutDay plan,
-  }) =>
-      _writeLocal('chg_wk_${userId}_$dayIndex', plan.toJson());
+  }) async {
+    await _writeLocal('chg_wk_${userId}_$dayIndex', plan.toJson());
+    if (dayIndex >= _planDayCount) {
+      await _syncAiPlans(userId);
+    }
+  }
 
   @override
   Future<WorkoutDay?> getWorkoutPlan({
@@ -539,8 +560,168 @@ class RemoteAppRepository implements AppRepository {
   }
 
   @override
-  Future<void> logAiEvent({required String userId, required AiEvent event}) async {
+  Future<void> logAiEvent(
+      {required String userId, required AiEvent event}) async {
     // No-op: AI usage is audited server-side on each /api/ai/* call.
+  }
+
+  Future<void> _hydrateAiPlansFromBootstrap({
+    required String userId,
+    required Object? aiPlans,
+    required Object? profile,
+  }) async {
+    if (aiPlans is! Map<String, dynamic>) {
+      await _clearLocalPlans(userId);
+      return;
+    }
+
+    final mealPlans = _parseMealPlanList(aiPlans['mealPlan']);
+    final workoutPlans = _parseWorkoutPlanList(aiPlans['workoutPlan']);
+    if (mealPlans.isEmpty && workoutPlans.isEmpty) {
+      await _clearLocalPlans(userId);
+      return;
+    }
+
+    final version = profile is Map<String, dynamic>
+        ? _readInt(profile, 'aiPlanVersion', 1)
+        : 1;
+    await _writeLocal(
+      'chg_gen_$userId',
+      PlanGeneration(
+        id: 'be_${userId}_$version',
+        userId: userId,
+        version: version,
+        goalSnapshot: 'Backend aiPlans',
+        createdAt: DateTime.now(),
+      ).toJson(),
+    );
+    for (final plan in mealPlans) {
+      await _writeLocal('chg_meal_${userId}_${plan.dayNumber}', plan.toJson());
+    }
+    for (final plan in workoutPlans) {
+      await _writeLocal('chg_wk_${userId}_${plan.dayNumber}', plan.toJson());
+    }
+  }
+
+  Future<void> _clearLocalPlans(String userId) async {
+    await _storage.delete(key: 'chg_gen_$userId');
+    for (var day = 1; day <= _planDayCount; day += 1) {
+      await _storage.delete(key: 'chg_meal_${userId}_$day');
+      await _storage.delete(key: 'chg_wk_${userId}_$day');
+    }
+  }
+
+  Future<void> _syncAiPlans(String userId) async {
+    final mealPlans = <Map<String, dynamic>>[];
+    final workoutPlans = <Map<String, dynamic>>[];
+    for (var day = 1; day <= _planDayCount; day += 1) {
+      final meal = await getMealPlan(userId: userId, version: 1, dayIndex: day);
+      if (meal != null) mealPlans.add(meal.toJson());
+      final workout =
+          await getWorkoutPlan(userId: userId, version: 1, dayIndex: day);
+      if (workout != null) workoutPlans.add(workout.toJson());
+    }
+
+    final json = await _request('POST', '/me/ai-plans', {
+      'mealPlan': mealPlans.isEmpty ? null : mealPlans,
+      'workoutPlan': workoutPlans.isEmpty ? null : workoutPlans,
+      'mealPlanStartDate': null,
+      'workoutPlanStartDate': null,
+    });
+    await _hydrateAiPlansFromBootstrap(
+      userId: userId,
+      aiPlans: json is Map<String, dynamic> ? json['aiPlans'] : null,
+      profile: json is Map<String, dynamic> ? json['profile'] : null,
+    );
+  }
+
+  List<MealPlanDay> _parseMealPlanList(Object? raw) {
+    if (raw is! List) return const [];
+    return raw
+        .whereType<Map<String, dynamic>>()
+        .map(_mealPlanDayFromAiPlan)
+        .toList(growable: false);
+  }
+
+  MealPlanDay _mealPlanDayFromAiPlan(Map<String, dynamic> json) {
+    final meals = _list(json['meals'])
+        .whereType<Map<String, dynamic>>()
+        .toList(growable: false);
+    return MealPlanDay(
+      dayNumber: _readInt(json, 'dayNumber', _readInt(json, 'day', 1)),
+      meals: meals
+          .asMap()
+          .entries
+          .map((entry) => _mealItemFromAiPlan(entry.key, entry.value))
+          .toList(growable: false),
+    );
+  }
+
+  MealItem _mealItemFromAiPlan(int index, Map<String, dynamic> json) {
+    return MealItem(
+      id: json['id'] as String? ?? 'meal-${index + 1}',
+      nameVi: json['nameVi'] as String? ??
+          json['name'] as String? ??
+          json['title'] as String? ??
+          '',
+      slotLabel: json['slotLabel'] as String? ?? json['slot'] as String? ?? '',
+      calories: _readInt(json, 'calories', _readInt(json, 'kcal', 0)),
+      protein: _readInt(json, 'protein', 0),
+      carbs: _readInt(json, 'carbs', 0),
+      fat: _readInt(json, 'fat', 0),
+      imageUrl: json['imageUrl'] as String? ?? '',
+      ingredients: _stringList(json['ingredients']).isNotEmpty
+          ? _stringList(json['ingredients'])
+          : _stringList(json['details']),
+    );
+  }
+
+  List<WorkoutDay> _parseWorkoutPlanList(Object? raw) {
+    if (raw is! List) return const [];
+    return raw
+        .whereType<Map<String, dynamic>>()
+        .map(_workoutDayFromAiPlan)
+        .toList(growable: false);
+  }
+
+  WorkoutDay _workoutDayFromAiPlan(Map<String, dynamic> json) {
+    final exercises = _list(json['exercises']);
+    return WorkoutDay(
+      dayNumber: _readInt(json, 'dayNumber', _readInt(json, 'day', 1)),
+      focusVi: json['focusVi'] as String? ??
+          json['focus'] as String? ??
+          json['title'] as String? ??
+          '',
+      exercises: exercises
+          .asMap()
+          .entries
+          .map((entry) => _workoutExerciseFromAiPlan(entry.key, entry.value))
+          .toList(growable: false),
+    );
+  }
+
+  WorkoutExercise _workoutExerciseFromAiPlan(int index, Object raw) {
+    if (raw is Map<String, dynamic>) {
+      return WorkoutExercise(
+        id: raw['id'] as String? ?? 'workout-${index + 1}',
+        nameVi: raw['nameVi'] as String? ??
+            raw['name'] as String? ??
+            raw['title'] as String? ??
+            '',
+        description: raw['description'] as String? ?? '',
+        sets: (raw['sets'] as num?)?.toInt(),
+        reps: raw['reps']?.toString(),
+        durationMinutes: (raw['durationMinutes'] as num?)?.toInt(),
+        caloriesBurned: _readInt(raw, 'caloriesBurned',
+            _readInt(raw, 'calories', _readInt(raw, 'caloriesEst', 0))),
+      );
+    }
+    return WorkoutExercise(
+      id: 'workout-${index + 1}',
+      nameVi: raw.toString(),
+      description: '',
+      caloriesBurned: 0,
+    );
   }
 
   Future<AuthResult> _auth(String path, Map<String, Object?> body) async {
@@ -792,8 +973,12 @@ class RemoteAppRepository implements AppRepository {
   List<dynamic> _list(Object? value) =>
       value is List<dynamic> ? value : const [];
 
-  List<String> _stringList(Object? value) =>
-      _list(value).map((e) => e.toString()).toList();
+  List<String> _stringList(Object? value) {
+    if (value is String && value.trim().isNotEmpty) {
+      return [value.trim()];
+    }
+    return _list(value).map((e) => e.toString()).toList();
+  }
 
   int _readInt(Map<String, dynamic> json, String key, int fallback) {
     final value = json[key];

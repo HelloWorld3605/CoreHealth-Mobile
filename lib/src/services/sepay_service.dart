@@ -16,9 +16,9 @@ import 'environment_config.dart';
 /// The SePay API token lives server-side only — it is never bundled in the app.
 /// The bank account number/owner used to render the QR are public details.
 ///
-/// NOTE: /payments/verify confirms an order that was created server-side. Full
-/// auto-confirmation requires the create-order flow (GHN address + create-order);
-/// until then this returns false (the UI falls back to manual confirmation).
+/// NOTE: /payments/verify confirms a server-created shop or token top-up order.
+/// Client-generated references are only a development fallback and are not used
+/// by real checkout/top-up flows.
 class SepayService {
   SepayService._();
 

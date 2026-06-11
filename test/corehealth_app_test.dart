@@ -3,6 +3,7 @@ import 'package:corehealth_flutter/src/app_controller.dart';
 import 'package:corehealth_flutter/src/data/app_repository.dart';
 import 'package:corehealth_flutter/src/demo_data.dart';
 import 'package:corehealth_flutter/src/models.dart';
+import 'package:corehealth_flutter/src/services/ai_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -35,6 +36,7 @@ void main() {
       () async {
     final controller = AppController(
       repository: _MemoryRepository(),
+      aiService: _FakeAiService(),
     );
 
     await controller.register(
@@ -63,9 +65,84 @@ void main() {
     expect(controller.profile.referralCode, equals('DEMO-123456'));
     expect(controller.profile.referredBy, equals('referrer-1'));
   });
+
+  test('finishOnboarding generates and persists initial AI plans', () async {
+    final repository = _MemoryRepository();
+    final controller = AppController(
+      repository: repository,
+      aiService: _FakeAiService(),
+    );
+
+    await controller.register(
+      displayName: 'Demo User',
+      email: 'demo@corehealth.app',
+      password: 'password123',
+    );
+    await controller.verifyOtp(
+      email: 'demo@corehealth.app',
+      otp: '123456',
+    );
+
+    final error = await controller.finishOnboarding(DemoData.initialProfile);
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+
+    expect(error, isNull);
+    expect(repository.savedMealDays, contains(30));
+    expect(repository.savedWorkoutDays, contains(30));
+    expect(controller.stage, equals(AppStage.home));
+  });
+
+  test('token top-up uses server order and refreshes wallet from backend',
+      () async {
+    final repository = _MemoryRepository();
+    final controller = AppController(
+      repository: repository,
+      aiService: _FakeAiService(),
+    );
+
+    await controller.register(
+      displayName: 'Demo User',
+      email: 'demo@corehealth.app',
+      password: 'password123',
+    );
+    await controller.verifyOtp(
+      email: 'demo@corehealth.app',
+      otp: '123456',
+    );
+
+    final order = await controller.createTokenTopupOrder(tokenPacks.first);
+
+    expect(repository.createdTopupPackIds, equals(['starter']));
+    expect(order?.reference, equals('CHTOPUP'));
+    expect(controller.profile.tokenBalance, equals(65));
+
+    repository.bootstrapData = AppBootstrapData(
+      session: const AppUserSession(
+        userId: 'user-1',
+        email: 'demo@corehealth.app',
+        status: UserStatus.active,
+      ),
+      userData: repository.userData.copyWith(
+        profile: repository.userData.profile.copyWith(
+          tokenBalance: 120,
+          tokenEarned: 120,
+        ),
+      ),
+    );
+
+    await controller.refreshAccountFromBackend();
+
+    expect(controller.profile.tokenBalance, equals(120));
+    expect(controller.profile.tokenEarned, equals(120));
+  });
 }
 
 class _MemoryRepository implements AppRepository {
+  final savedMealDays = <int>[];
+  final savedWorkoutDays = <int>[];
+  final createdTopupPackIds = <String>[];
+  AppBootstrapData bootstrapData = const AppBootstrapData();
+
   PersistedUserData _userData = const PersistedUserData(
     profile: DemoData.initialProfile,
     weightHistory: DemoData.weightEntries,
@@ -75,8 +152,10 @@ class _MemoryRepository implements AppRepository {
     orders: [],
   );
 
+  PersistedUserData get userData => _userData;
+
   @override
-  Future<AppBootstrapData> bootstrap() async => const AppBootstrapData();
+  Future<AppBootstrapData> bootstrap() async => bootstrapData;
 
   @override
   Future<RegisterResponseData> register({
@@ -397,6 +476,52 @@ class _MemoryRepository implements AppRepository {
   }
 
   @override
+  Future<PaymentOrder> createShopPaymentOrder({
+    required String userId,
+    required List<Product> items,
+    required String deliveryName,
+    required String deliveryPhone,
+    required String deliveryAddress,
+    String? deliveryEmail,
+    String? wardCode,
+    int? districtId,
+    String? voucherCode,
+  }) async {
+    return PaymentOrder(
+      orderId: 'ord-test',
+      reference: 'CHTEST',
+      qrUrl: '',
+      bankName: 'MB Bank',
+      accountNumber: '123456',
+      accountOwner: 'COREHEALTH',
+      expiresAt:
+          DateTime.now().add(const Duration(minutes: 10)).toIso8601String(),
+      amountVnd: items.fold<int>(0, (sum, item) => sum + item.priceK * 1000),
+    );
+  }
+
+  @override
+  Future<PaymentOrder> createTokenTopupOrder({
+    required String userId,
+    required TokenPack pack,
+  }) async {
+    createdTopupPackIds.add(pack.idValue);
+    return PaymentOrder(
+      orderId: 'topup-test',
+      reference: 'CHTOPUP',
+      qrUrl: '',
+      bankName: 'MB Bank',
+      accountNumber: '123456',
+      accountOwner: 'COREHEALTH',
+      expiresAt:
+          DateTime.now().add(const Duration(minutes: 10)).toIso8601String(),
+      amountVnd: pack.priceK * 1000,
+      packId: pack.idValue,
+      tokenAmount: pack.tokens,
+    );
+  }
+
+  @override
   Future<void> signOut() async {}
 
   @override
@@ -438,7 +563,9 @@ class _MemoryRepository implements AppRepository {
       {required String userId,
       required String generationId,
       required int dayIndex,
-      required MealPlanDay plan}) async {}
+      required MealPlanDay plan}) async {
+    savedMealDays.add(dayIndex);
+  }
 
   @override
   Future<MealPlanDay?> getMealPlan(
@@ -452,7 +579,9 @@ class _MemoryRepository implements AppRepository {
       {required String userId,
       required String generationId,
       required int dayIndex,
-      required WorkoutDay plan}) async {}
+      required WorkoutDay plan}) async {
+    savedWorkoutDays.add(dayIndex);
+  }
 
   @override
   Future<WorkoutDay?> getWorkoutPlan(
@@ -466,8 +595,7 @@ class _MemoryRepository implements AppRepository {
       {required String userId, required List<ShoppingItem> items}) async {}
 
   @override
-  Future<List<ShoppingItem>> getShoppingItems(
-          {required String userId}) async =>
+  Future<List<ShoppingItem>> getShoppingItems({required String userId}) async =>
       const [];
 
   @override
@@ -482,4 +610,53 @@ class _MemoryRepository implements AppRepository {
   @override
   Future<void> logAiEvent(
       {required String userId, required AiEvent event}) async {}
+}
+
+class _FakeAiService extends AiService {
+  @override
+  Future<List<InsightItem>> generateInsights(DemoProfile profile) async {
+    return const [];
+  }
+
+  @override
+  Future<List<MealPlanDay>> generateMealPlan(DemoProfile profile) async {
+    return const [
+      MealPlanDay(
+        dayNumber: 1,
+        meals: [
+          MealItem(
+            id: 'meal-1',
+            nameVi: 'Meal 1',
+            slotLabel: 'Sang',
+            calories: 400,
+            protein: 25,
+            carbs: 45,
+            fat: 12,
+            imageUrl: '',
+            ingredients: ['Rice'],
+          ),
+        ],
+      ),
+    ];
+  }
+
+  @override
+  Future<List<WorkoutDay>> generateWorkoutPlan(DemoProfile profile) async {
+    return const [
+      WorkoutDay(
+        dayNumber: 1,
+        focusVi: 'Workout focus',
+        exercises: [
+          WorkoutExercise(
+            id: 'workout-1',
+            nameVi: 'Workout 1',
+            description: '',
+            sets: 3,
+            reps: '10',
+            caloriesBurned: 120,
+          ),
+        ],
+      ),
+    ];
+  }
 }

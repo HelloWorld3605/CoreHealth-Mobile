@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
+import '../models.dart';
 import '../services/environment_config.dart';
 import '../services/sepay_service.dart';
 import '../theme.dart';
@@ -25,6 +26,7 @@ class PaymentScreen extends StatefulWidget {
     required this.description,
     required this.onSuccess,
     this.onTimeout,
+    this.paymentOrder,
   });
 
   /// Amount in thousands of VNĐ.
@@ -38,6 +40,10 @@ class PaymentScreen extends StatefulWidget {
 
   /// Called when payment times out and user cancels. Optional.
   final VoidCallback? onTimeout;
+
+  /// Server-created pending order. When present, payment verification uses this
+  /// reference/amount instead of a client-generated random reference.
+  final PaymentOrder? paymentOrder;
 
   @override
   State<PaymentScreen> createState() => _PaymentScreenState();
@@ -195,6 +201,11 @@ class _PaymentScreenState extends State<PaymentScreen>
   int _waitedSeconds = 0;
 
   static const _timeoutSeconds = 600;
+  late final int _paymentAmountVnd;
+  late final String? _orderQrUrl;
+  late final String _bankName;
+  late final String _accountNumber;
+  late final String _accountOwner;
 
   // Bank methods and VNPay use real SePay QR polling
   bool get _isRealPayment =>
@@ -212,7 +223,22 @@ class _PaymentScreenState extends State<PaymentScreen>
     final dd = now.day.toString().padLeft(2, '0');
     final mm = now.month.toString().padLeft(2, '0');
     final rand = (rng.nextInt(9000) + 1000).toString();
-    _reference = 'CH$dd$mm$rand'; // e.g. CH18047823 — dễ nhập tay
+    _reference =
+        widget.paymentOrder?.reference ?? 'CH$dd$mm$rand'; // e.g. CH18047823
+    _paymentAmountVnd = widget.paymentOrder?.amountVnd ?? widget.amountK * 1000;
+    _orderQrUrl = widget.paymentOrder?.qrUrl;
+    _bankName = _orderValue(
+      widget.paymentOrder?.bankName,
+      SepayService.instance.bankName,
+    );
+    _accountNumber = _orderValue(
+      widget.paymentOrder?.accountNumber,
+      SepayService.instance.accountNumber,
+    );
+    _accountOwner = _orderValue(
+      widget.paymentOrder?.accountOwner,
+      SepayService.instance.accountOwner,
+    );
     _successCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 500),
@@ -247,7 +273,7 @@ class _PaymentScreenState extends State<PaymentScreen>
       if (mounted) setState(() {}); // refresh counter
       final paid = await SepayService.instance.checkPaymentReceived(
         reference: _reference,
-        amountVnd: widget.amountK * 1000,
+        amountVnd: _paymentAmountVnd,
       );
       if (paid) _onPaid();
     });
@@ -259,6 +285,7 @@ class _PaymentScreenState extends State<PaymentScreen>
     _pollTimer?.cancel();
     _closeWs();
     widget.onSuccess();
+    if (!mounted) return;
     setState(() => _state = _PayState.success);
     _successCtrl.forward();
   }
@@ -267,7 +294,8 @@ class _PaymentScreenState extends State<PaymentScreen>
   // Connect, authenticate with the JWT, then wait for payment_confirmed.
   Future<void> _connectWs() async {
     try {
-      final jwt = await const FlutterSecureStorage().read(key: 'corehealth_jwt');
+      final jwt =
+          await const FlutterSecureStorage().read(key: 'corehealth_jwt');
       if (jwt == null || jwt.isEmpty) return; // unauthenticated → poll only
       final channel = WebSocketChannel.connect(Uri.parse(_wsUrl(_reference)));
       _ws = channel;
@@ -296,9 +324,15 @@ class _PaymentScreenState extends State<PaymentScreen>
 
   String _wsUrl(String reference) {
     // apiBaseUrl is https://host/api ; the socket lives at host root /ws/payments.
-    var base = EnvironmentConfig.apiBaseUrl.replaceFirst(RegExp(r'^http'), 'ws');
+    var base =
+        EnvironmentConfig.apiBaseUrl.replaceFirst(RegExp(r'^http'), 'ws');
     base = base.replaceFirst(RegExp(r'/api/?$'), '');
     return '$base/ws/payments?reference=${Uri.encodeQueryComponent(reference)}';
+  }
+
+  String _orderValue(String? value, String fallback) {
+    final trimmed = value?.trim();
+    return trimmed == null || trimmed.isEmpty ? fallback : trimmed;
   }
 
   Future<void> _confirm() async {
@@ -306,17 +340,13 @@ class _PaymentScreenState extends State<PaymentScreen>
     if (_isRealPayment) {
       setState(() => _state = _PayState.awaitingPayment);
       _startPolling();
-    } else {
-      setState(() => _state = _PayState.processing);
-      await Future<void>.delayed(const Duration(milliseconds: 1600));
-      if (!mounted) return;
-      widget.onSuccess();
-      setState(() => _state = _PayState.success);
-      _successCtrl.forward();
     }
   }
 
   bool _visible(_PayMethod m) {
+    if (m.group != _MethodGroup.bank && m.id != 'vnpay') {
+      return false;
+    }
     if (m.iosOnly) return Theme.of(context).platform == TargetPlatform.iOS;
     if (m.androidOnly) {
       return Theme.of(context).platform == TargetPlatform.android;
@@ -352,6 +382,10 @@ class _PaymentScreenState extends State<PaymentScreen>
       return _AwaitingPaymentScreen(
         amountK: widget.amountK,
         reference: _reference,
+        qrUrl: _orderQrUrl,
+        bankName: _bankName,
+        accountNumber: _accountNumber,
+        accountOwner: _accountOwner,
         waitedSeconds: _waitedSeconds,
         onCancel: () {
           _pollTimer?.cancel();
@@ -367,6 +401,10 @@ class _PaymentScreenState extends State<PaymentScreen>
           description: widget.description,
           selected: _selected,
           reference: _reference,
+          qrUrl: _orderQrUrl,
+          bankName: _bankName,
+          accountNumber: _accountNumber,
+          accountOwner: _accountOwner,
           onSelect: (m) => setState(() => _selected = m),
           onConfirm: _selected != null ? _confirm : null,
           visible: _visible,
@@ -387,6 +425,10 @@ class _SelectingScreen extends StatelessWidget {
     required this.description,
     required this.selected,
     required this.reference,
+    required this.qrUrl,
+    required this.bankName,
+    required this.accountNumber,
+    required this.accountOwner,
     required this.onSelect,
     required this.onConfirm,
     required this.visible,
@@ -396,6 +438,10 @@ class _SelectingScreen extends StatelessWidget {
   final String description;
   final _PayMethod? selected;
   final String reference;
+  final String? qrUrl;
+  final String bankName;
+  final String accountNumber;
+  final String accountOwner;
   final ValueChanged<_PayMethod> onSelect;
   final VoidCallback? onConfirm;
   final bool Function(_PayMethod) visible;
@@ -426,6 +472,10 @@ class _SelectingScreen extends StatelessWidget {
                 selected: selected?.id == m.id,
                 amountK: amountK,
                 reference: reference,
+                qrUrl: qrUrl,
+                bankName: bankName,
+                accountNumber: accountNumber,
+                accountOwner: accountOwner,
                 onTap: () => onSelect(m),
               )),
         ],
@@ -534,6 +584,10 @@ class _MethodTile extends StatelessWidget {
     required this.selected,
     required this.amountK,
     required this.reference,
+    required this.qrUrl,
+    required this.bankName,
+    required this.accountNumber,
+    required this.accountOwner,
     required this.onTap,
   });
 
@@ -541,6 +595,10 @@ class _MethodTile extends StatelessWidget {
   final bool selected;
   final int amountK;
   final String reference;
+  final String? qrUrl;
+  final String bankName;
+  final String accountNumber;
+  final String accountOwner;
   final VoidCallback onTap;
 
   @override
@@ -615,6 +673,10 @@ class _MethodTile extends StatelessWidget {
                       method: method,
                       amountK: amountK,
                       reference: reference,
+                      qrUrl: qrUrl,
+                      bankName: bankName,
+                      accountNumber: accountNumber,
+                      accountOwner: accountOwner,
                     )
                   : const SizedBox.shrink(),
             ),
@@ -634,11 +696,19 @@ class _MethodDetail extends StatelessWidget {
     required this.method,
     required this.amountK,
     required this.reference,
+    required this.qrUrl,
+    required this.bankName,
+    required this.accountNumber,
+    required this.accountOwner,
   });
 
   final _PayMethod method;
   final int amountK;
   final String reference;
+  final String? qrUrl;
+  final String bankName;
+  final String accountNumber;
+  final String accountOwner;
 
   @override
   Widget build(BuildContext context) {
@@ -699,10 +769,12 @@ class _MethodDetail extends StatelessWidget {
 
     // VNPay QR — real VietQR preview (full confirmation via SePay polling)
     if (method.id == 'vnpay') {
-      final qrUrl = SepayService.instance.vietQrUrl(
-        amountVnd: amountK * 1000,
-        reference: reference,
-      );
+      final previewQrUrl = (qrUrl != null && qrUrl!.isNotEmpty)
+          ? qrUrl!
+          : SepayService.instance.vietQrUrl(
+              amountVnd: amountK * 1000,
+              reference: reference,
+            );
       return Column(
         children: [
           divider(),
@@ -710,7 +782,7 @@ class _MethodDetail extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
             child: Column(
               children: [
-                _VietQrImage(qrUrl: qrUrl, size: 180),
+                _VietQrImage(qrUrl: previewQrUrl, size: 180),
                 const SizedBox(height: 10),
                 Text('Quét bằng bất kỳ app ngân hàng Việt Nam',
                     textAlign: TextAlign.center,
@@ -883,14 +955,14 @@ class _MethodDetail extends StatelessWidget {
               const SizedBox(height: 14),
               _InfoRow(
                   label: 'Ngân hàng nhận',
-                  value: SepayService.instance.bankName),
+                  value: bankName),
               _InfoRow(
                   label: 'Số tài khoản',
-                  value: SepayService.instance.accountNumber,
+                  value: accountNumber,
                   copyable: true),
               _InfoRow(
                   label: 'Chủ tài khoản',
-                  value: SepayService.instance.accountOwner),
+                  value: accountOwner),
               _InfoRow(
                   label: 'Số tiền',
                   value: '${_formatAmount(amountK)} VNĐ',
@@ -935,12 +1007,20 @@ class _AwaitingPaymentScreen extends StatelessWidget {
   const _AwaitingPaymentScreen({
     required this.amountK,
     required this.reference,
+    required this.qrUrl,
+    required this.bankName,
+    required this.accountNumber,
+    required this.accountOwner,
     required this.waitedSeconds,
     required this.onCancel,
   });
 
   final int amountK;
   final String reference;
+  final String? qrUrl;
+  final String bankName;
+  final String accountNumber;
+  final String accountOwner;
   final int waitedSeconds;
   final VoidCallback onCancel;
 
@@ -948,10 +1028,12 @@ class _AwaitingPaymentScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final tt = Theme.of(context).textTheme;
     final layout = PhoneLayout.of(context);
-    final qrUrl = SepayService.instance.vietQrUrl(
-      amountVnd: amountK * 1000,
-      reference: reference,
-    );
+    final paymentQrUrl = (qrUrl != null && qrUrl!.isNotEmpty)
+        ? qrUrl!
+        : SepayService.instance.vietQrUrl(
+            amountVnd: amountK * 1000,
+            reference: reference,
+          );
 
     return Scaffold(
       backgroundColor: AppPalette.background,
@@ -987,7 +1069,7 @@ class _AwaitingPaymentScreen extends StatelessWidget {
                 ),
                 child: Column(
                   children: [
-                    _VietQrImage(qrUrl: qrUrl, size: 220),
+                    _VietQrImage(qrUrl: paymentQrUrl, size: 220),
                     const SizedBox(height: 12),
                     Text('Quét bằng bất kỳ app ngân hàng Việt Nam',
                         style:
@@ -1009,14 +1091,14 @@ class _AwaitingPaymentScreen extends StatelessWidget {
                   children: [
                     _InfoRow(
                         label: 'Ngân hàng',
-                        value: SepayService.instance.bankName),
+                        value: bankName),
                     _InfoRow(
                         label: 'Số tài khoản',
-                        value: SepayService.instance.accountNumber,
+                        value: accountNumber,
                         copyable: true),
                     _InfoRow(
                         label: 'Chủ tài khoản',
-                        value: SepayService.instance.accountOwner),
+                        value: accountOwner),
                     _InfoRow(
                         label: 'Số tiền',
                         value: '${_formatAmount(amountK)} VNĐ',

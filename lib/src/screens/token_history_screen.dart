@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../app_controller.dart';
@@ -76,21 +78,41 @@ class TokenHistoryScreen extends StatelessWidget {
       (item) => item.recommended,
       orElse: () => tokenPacks.first,
     );
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => PaymentScreen(
-          amountK: pack.priceK,
-          description: '${pack.title} token pack - ${pack.tokens} token',
-          onSuccess: () {
-            controller.activateTokenPack(pack);
-            Navigator.of(context).pop();
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Đã nạp ${pack.tokens} token.')),
-            );
-          },
+    unawaited(() async {
+      final messenger = ScaffoldMessenger.of(context);
+      final navigator = Navigator.of(context);
+      final order = await controller.createTokenTopupOrder(pack);
+      if (!context.mounted) return;
+      if (order == null) {
+        messenger.showSnackBar(
+          const SnackBar(
+            content: Text('Không tạo được đơn nạp token. Vui lòng thử lại.'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        return;
+      }
+      await navigator.push(
+        MaterialPageRoute<void>(
+          builder: (_) => PaymentScreen(
+            amountK: (order.amountVnd / 1000).ceil(),
+            description: '${pack.title} token pack - ${pack.tokens} token',
+            paymentOrder: order,
+            onSuccess: () {
+              unawaited(controller.refreshAccountFromBackend());
+              Navigator.of(context).pop();
+              messenger.showSnackBar(
+                SnackBar(
+                  content: Text(
+                    'Đã xác nhận nạp ${order.tokenAmount ?? pack.tokens} token.',
+                  ),
+                ),
+              );
+            },
+          ),
         ),
-      ),
-    );
+      );
+    }());
   }
 }
 
