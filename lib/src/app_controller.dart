@@ -6,7 +6,6 @@ import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
 import 'data/app_repository.dart';
-import 'demo_data.dart';
 import 'models.dart';
 import 'services/ai_service.dart';
 import 'services/catalog_service.dart';
@@ -24,6 +23,22 @@ class AppController extends ChangeNotifier {
     'COREHEALTH_SHOW_INTRO_ON_LAUNCH',
     defaultValue: true,
   );
+  static const _emptyProfile = DemoProfile(
+    name: '',
+    age: 0,
+    gender: Gender.other,
+    heightCm: 0,
+    weightKg: 0,
+    targetWeightKg: 0,
+    goal: GoalType.maintain,
+    activityLevel: ActivityLevel.sedentary,
+    schedule: '',
+    dietaryRestrictions: [],
+    allergies: [],
+    healthConditions: [],
+    plan: SubscriptionPlan.free,
+    subscriptionMonths: 0,
+  );
 
   final AppRepository _repository;
   final AiService _aiService;
@@ -36,7 +51,7 @@ class AppController extends ChangeNotifier {
   bool _showPostOnboardingOffer = false;
   AppUserSession? _session;
   OnboardingProgress _onboardingProgress = const OnboardingProgress();
-  DemoProfile _profile = DemoData.initialProfile;
+  DemoProfile _profile = _emptyProfile;
   List<WeightEntry> _weightHistory = const [];
   Set<int> _completedWorkoutDays = const {};
   Set<int> _completedMealDays = const {};
@@ -1227,7 +1242,7 @@ class AppController extends ChangeNotifier {
 
   void _resetUserState() {
     _session = null;
-    _profile = DemoData.initialProfile;
+    _profile = _emptyProfile;
     _weightHistory = const [];
     _completedWorkoutDays = const {};
     _completedMealDays = const {};

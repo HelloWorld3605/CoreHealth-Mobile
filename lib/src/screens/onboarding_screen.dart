@@ -6,7 +6,6 @@ import 'package:flutter/physics.dart';
 
 
 import '../app_controller.dart';
-import '../demo_data.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../widgets/adaptive.dart';
@@ -36,6 +35,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   static const _femaleGenderImage = 'assets/images/onboarding/ptnu-p1.png';
   static const _maleBodyImage = 'assets/images/onboarding/ptnam-p2.png';
   static const _femaleBodyImage = 'assets/images/onboarding/ptnu-p2.png';
+  static const _initialAge = 28;
+  static const _initialHeightCm = 170.0;
+  static const _initialWeightKg = 65.0;
 
   final nameController = TextEditingController();
   final ageController = TextEditingController();
@@ -45,10 +47,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   Gender gender = Gender.male;
   _LengthUnit lengthUnit = _LengthUnit.cm;
   _WeightUnit weightUnit = _WeightUnit.kg;
-  double heightCm = DemoData.initialProfile.heightCm;
-  double weightKg = DemoData.initialProfile.weightKg;
+  double heightCm = _initialHeightCm;
+  double weightKg = _initialWeightKg;
   double? targetWeightKg;
-  int birthYear = DateTime.now().year - DemoData.initialProfile.age;
+  int birthYear = DateTime.now().year - _initialAge;
   _GoalCategory selectedGoalCategory = _GoalCategory.muscleGain;
   _GoalTimeline selectedGoalTimeline = _GoalTimeline.three;
   int desiredBodyIndex = 1;
@@ -229,10 +231,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     final typedAge = int.tryParse(ageController.text);
     final resolvedAge =
         currentStep == 0 && typedAge != null ? typedAge : _ageFromBirthYear;
+    final typedName = nameController.text.trim();
     return DemoProfile(
-      name: nameController.text.trim().isEmpty
-          ? DemoData.initialProfile.name
-          : nameController.text.trim(),
+      name: typedName.isEmpty ? 'Bạn' : typedName,
       age: resolvedAge.clamp(10, 120).toInt(),
       gender: gender,
       heightCm: heightCm,
@@ -284,7 +285,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
     if (currentStep == 0) {
       final age =
-          int.tryParse(ageController.text) ?? DemoData.initialProfile.age;
+          int.tryParse(ageController.text) ?? _initialAge;
       birthYear = DateTime.now().year - age;
     }
 

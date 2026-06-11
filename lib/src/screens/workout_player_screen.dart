@@ -175,12 +175,17 @@ class _WorkoutPlayerScreenState extends State<WorkoutPlayerScreen> {
                       Container(
                         width: double.infinity,
                         decoration: const BoxDecoration(
-                          image: DecorationImage(
-                            image: NetworkImage('https://images.unsplash.com/photo-1517836357463-d25dfeac3438?w=500&h=350&fit=crop'),
-                            fit: BoxFit.cover,
-                            opacity: 0.45,
+                          gradient: LinearGradient(
+                            colors: [AppPalette.surface, AppPalette.background],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
                           ),
                         ),
+                      ),
+                      const Icon(
+                        Icons.fitness_center_rounded,
+                        color: Colors.white12,
+                        size: 128,
                       ),
                       Container(
                         decoration: const BoxDecoration(

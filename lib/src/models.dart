@@ -280,7 +280,7 @@ class DemoProfile {
   final String referralCode;
   final String referredBy;
 
-  /// The exact moment this subscription was activated. Null = demo/free (no expiry check).
+  /// The exact moment this subscription was activated. Null = free/no expiry check.
   final DateTime? subscriptionStartDate;
 
   /// New-user CoreHealth Max trial. This is tracked separately from paid plan
