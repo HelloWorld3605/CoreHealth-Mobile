@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../services/catalog_service.dart';
 import '../theme.dart';
 import '../widgets/visuals.dart';
 
@@ -12,7 +13,10 @@ class LeaderboardScreen extends StatefulWidget {
 class _LeaderboardScreenState extends State<LeaderboardScreen> {
   String _selectedPeriod = 'Tuần';
 
-  final List<Map<String, dynamic>> _rankings = [
+  final CatalogService _catalog = CatalogService();
+
+  // Loaded from BE (/api/leaderboard) on open; list below is offline fallback.
+  List<Map<String, dynamic>> _rankings = [
     {'name': 'Nguyễn Văn Nam', 'streak': 24, 'score': 96, 'rank': 1, 'avatar': 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=100&h=100&fit=crop'},
     {'name': 'Trần Thị Mai', 'streak': 21, 'score': 94, 'rank': 2, 'avatar': 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=100&h=100&fit=crop'},
     {'name': 'Lê Hoàng Long', 'streak': 19, 'score': 91, 'rank': 3, 'avatar': 'https://images.unsplash.com/photo-1571019614242-c5c5dee9f50b?w=100&h=100&fit=crop'},
@@ -21,6 +25,32 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
     {'name': 'Lê Tuấn Kiệt', 'streak': 14, 'score': 85, 'rank': 6, 'avatar': 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=100&h=100&fit=crop'},
     {'name': 'Bạn (You)', 'streak': 6, 'score': 82, 'rank': 12, 'avatar': ''}
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final rows = await _catalog.leaderboard();
+      if (rows.isEmpty || !mounted) return;
+      setState(() {
+        _rankings = rows.map((e) {
+          return <String, dynamic>{
+            'name': e['name'] ?? '',
+            'streak': (e['streak'] as num?)?.toInt() ?? 0,
+            'score': (e['points'] as num?)?.toInt() ?? 0,
+            'rank': (e['rank'] as num?)?.toInt() ?? 0,
+            'avatar': e['avatar'] ?? '',
+          };
+        }).toList();
+      });
+    } catch (_) {
+      // Backend unreachable — keep the offline fallback list.
+    }
+  }
 
   @override
   Widget build(BuildContext context) {

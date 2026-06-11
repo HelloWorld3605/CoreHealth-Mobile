@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../services/catalog_service.dart';
 import '../theme.dart';
 import '../widgets/visuals.dart';
 
@@ -10,7 +11,10 @@ class ChallengesScreen extends StatefulWidget {
 }
 
 class _ChallengesScreenState extends State<ChallengesScreen> {
-  final List<Map<String, dynamic>> _challenges = [
+  final CatalogService _catalog = CatalogService();
+
+  // Loaded from BE (/api/challenges) on open; list below is offline fallback.
+  List<Map<String, dynamic>> _challenges = [
     {
       'id': 'fat_loss_30',
       'title': 'Thử thách đốt mỡ 30 ngày',
@@ -48,6 +52,40 @@ class _ChallengesScreenState extends State<ChallengesScreen> {
       'image': 'https://images.unsplash.com/photo-1571019614242-c5c5dee9f50b?w=400&h=300&fit=crop',
     }
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final rows = await _catalog.challenges();
+      if (rows.isEmpty || !mounted) return;
+      const palette = [AppPalette.orange, AppPalette.blue, AppPalette.emeraldDeep];
+      setState(() {
+        _challenges = rows.asMap().entries.map((entry) {
+          final e = entry.value;
+          final totalDays = (e['totalDays'] as num?)?.toInt() ?? 0;
+          return <String, dynamic>{
+            'id': e['id'] ?? '',
+            'title': e['title'] ?? '',
+            'description': e['description'] ?? '',
+            'reward': (e['rewardTokens'] as num?)?.toInt() ?? 0,
+            'duration': totalDays > 0 ? '$totalDays ngày' : '',
+            'participants': (e['participants'] as num?)?.toInt() ?? 0,
+            'joined': e['joined'] == true,
+            'progress': (e['progress'] as num?)?.toInt() ?? 0,
+            'color': palette[entry.key % palette.length],
+            'image': e['image'] ?? '',
+          };
+        }).toList();
+      });
+    } catch (_) {
+      // Backend unreachable — keep the offline fallback list.
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
