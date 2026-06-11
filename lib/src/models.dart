@@ -63,6 +63,149 @@ class AppUserSession {
   final UserStatus status;
 }
 
+/// Rich fitness-survey fields shared 1:1 with the web onboarding
+/// (CoreHealth-FE buildProfilePayload). Same keys + value IDs so the BE AI
+/// planner (AiController.planProfile) reads identical data from web or mobile.
+class FitnessSurvey {
+  const FitnessSurvey({
+    this.bodyFatPercent,
+    this.waistCm,
+    this.weeklyChangeKg = 0.25,
+    this.timelineWeeks = 12,
+    this.priority = 'balanced',
+    this.trainingExperience = 'beginner',
+    this.workoutLocation = 'gym',
+    this.equipment = const ['full-gym'],
+    this.daysPerWeek = 4,
+    this.sessionMinutes = 60,
+    this.preferredWorkoutTime = 'evening',
+    this.injuries = '',
+    this.medicalNotes = '',
+    this.dietType = 'high-protein',
+    this.mealFrequency = '3 meals + 1 snack',
+    this.cookingTimeMinutes = 30,
+    this.budget = 'moderate',
+    this.dislikedFoods = const [],
+    this.preferredCuisines = const [],
+    this.supplements = const [],
+  });
+
+  final double? bodyFatPercent;
+  final double? waistCm;
+  final double weeklyChangeKg;
+  final int timelineWeeks;
+  final String priority; // balanced | nutrition | training | health
+  final String trainingExperience; // beginner | intermediate | advanced
+  final String workoutLocation; // gym | home | outdoor
+  final List<String> equipment;
+  final int daysPerWeek;
+  final int sessionMinutes;
+  final String preferredWorkoutTime; // morning | afternoon | evening | flexible
+  final String injuries;
+  final String medicalNotes;
+  final String dietType; // balanced | high-protein | mediterranean | low-carb | plant-forward | keto
+  final String mealFrequency;
+  final int cookingTimeMinutes;
+  final String budget; // low | moderate | premium
+  final List<String> dislikedFoods;
+  final List<String> preferredCuisines;
+  final List<String> supplements;
+
+  Map<String, dynamic> toJson() => {
+        'bodyFatPercent': bodyFatPercent,
+        'waistCm': waistCm,
+        'weeklyChangeKg': weeklyChangeKg,
+        'timelineWeeks': timelineWeeks,
+        'priority': priority,
+        'trainingExperience': trainingExperience,
+        'workoutLocation': workoutLocation,
+        'equipment': equipment,
+        'daysPerWeek': daysPerWeek,
+        'sessionMinutes': sessionMinutes,
+        'preferredWorkoutTime': preferredWorkoutTime,
+        'injuries': injuries,
+        'medicalNotes': medicalNotes,
+        'dietType': dietType,
+        'mealFrequency': mealFrequency,
+        'cookingTimeMinutes': cookingTimeMinutes,
+        'budget': budget,
+        'dislikedFoods': dislikedFoods,
+        'preferredCuisines': preferredCuisines,
+        'supplements': supplements,
+      };
+
+  factory FitnessSurvey.fromJson(Map<String, dynamic> j) => FitnessSurvey(
+        bodyFatPercent: (j['bodyFatPercent'] as num?)?.toDouble(),
+        waistCm: (j['waistCm'] as num?)?.toDouble(),
+        weeklyChangeKg: (j['weeklyChangeKg'] as num?)?.toDouble() ?? 0.25,
+        timelineWeeks: (j['timelineWeeks'] as num?)?.toInt() ?? 12,
+        priority: j['priority'] as String? ?? 'balanced',
+        trainingExperience: j['trainingExperience'] as String? ?? 'beginner',
+        workoutLocation: j['workoutLocation'] as String? ?? 'gym',
+        equipment: _strList(j['equipment'], const ['full-gym']),
+        daysPerWeek: (j['daysPerWeek'] as num?)?.toInt() ?? 4,
+        sessionMinutes: (j['sessionMinutes'] as num?)?.toInt() ?? 60,
+        preferredWorkoutTime: j['preferredWorkoutTime'] as String? ?? 'evening',
+        injuries: j['injuries'] as String? ?? '',
+        medicalNotes: j['medicalNotes'] as String? ?? '',
+        dietType: j['dietType'] as String? ?? 'high-protein',
+        mealFrequency: j['mealFrequency'] as String? ?? '3 meals + 1 snack',
+        cookingTimeMinutes: (j['cookingTimeMinutes'] as num?)?.toInt() ?? 30,
+        budget: j['budget'] as String? ?? 'moderate',
+        dislikedFoods: _strList(j['dislikedFoods'], const []),
+        preferredCuisines: _strList(j['preferredCuisines'], const []),
+        supplements: _strList(j['supplements'], const []),
+      );
+
+  FitnessSurvey copyWith({
+    double? bodyFatPercent,
+    double? waistCm,
+    double? weeklyChangeKg,
+    int? timelineWeeks,
+    String? priority,
+    String? trainingExperience,
+    String? workoutLocation,
+    List<String>? equipment,
+    int? daysPerWeek,
+    int? sessionMinutes,
+    String? preferredWorkoutTime,
+    String? injuries,
+    String? medicalNotes,
+    String? dietType,
+    String? mealFrequency,
+    int? cookingTimeMinutes,
+    String? budget,
+    List<String>? dislikedFoods,
+    List<String>? preferredCuisines,
+    List<String>? supplements,
+  }) =>
+      FitnessSurvey(
+        bodyFatPercent: bodyFatPercent ?? this.bodyFatPercent,
+        waistCm: waistCm ?? this.waistCm,
+        weeklyChangeKg: weeklyChangeKg ?? this.weeklyChangeKg,
+        timelineWeeks: timelineWeeks ?? this.timelineWeeks,
+        priority: priority ?? this.priority,
+        trainingExperience: trainingExperience ?? this.trainingExperience,
+        workoutLocation: workoutLocation ?? this.workoutLocation,
+        equipment: equipment ?? this.equipment,
+        daysPerWeek: daysPerWeek ?? this.daysPerWeek,
+        sessionMinutes: sessionMinutes ?? this.sessionMinutes,
+        preferredWorkoutTime: preferredWorkoutTime ?? this.preferredWorkoutTime,
+        injuries: injuries ?? this.injuries,
+        medicalNotes: medicalNotes ?? this.medicalNotes,
+        dietType: dietType ?? this.dietType,
+        mealFrequency: mealFrequency ?? this.mealFrequency,
+        cookingTimeMinutes: cookingTimeMinutes ?? this.cookingTimeMinutes,
+        budget: budget ?? this.budget,
+        dislikedFoods: dislikedFoods ?? this.dislikedFoods,
+        preferredCuisines: preferredCuisines ?? this.preferredCuisines,
+        supplements: supplements ?? this.supplements,
+      );
+
+  static List<String> _strList(Object? v, List<String> fallback) =>
+      v is List ? v.map((e) => e.toString()).toList() : fallback;
+}
+
 class DemoProfile {
   const DemoProfile({
     required this.name,
@@ -93,6 +236,7 @@ class DemoProfile {
     this.subscriptionStartDate,
     this.coreHealthMaxTrialExpiresAt,
     this.aiPlanVersion = 1,
+    this.survey = const FitnessSurvey(),
   });
 
   final String name;
@@ -135,6 +279,9 @@ class DemoProfile {
   final DateTime? coreHealthMaxTrialExpiresAt;
 
   final int aiPlanVersion;
+
+  /// Full fitness-survey payload shared 1:1 with the web onboarding.
+  final FitnessSurvey survey;
 
   double get bmi {
     if (heightCm <= 0 || weightKg <= 0) return 0.0;
@@ -269,6 +416,7 @@ class DemoProfile {
     String? referralCode,
     String? referredBy,
     int? aiPlanVersion,
+    FitnessSurvey? survey,
     // Use Object? sentinel so callers can explicitly pass null to clear the date.
     Object? subscriptionStartDate = _keep,
     Object? coreHealthMaxTrialExpiresAt = _keep,
@@ -306,6 +454,7 @@ class DemoProfile {
           ? this.coreHealthMaxTrialExpiresAt
           : coreHealthMaxTrialExpiresAt as DateTime?,
       aiPlanVersion: aiPlanVersion ?? this.aiPlanVersion,
+      survey: survey ?? this.survey,
     );
   }
 }

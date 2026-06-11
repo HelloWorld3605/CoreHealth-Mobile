@@ -152,6 +152,35 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         _GoalCategory.performance => GoalType.maintain,
       };
 
+  // Maps the answers already collected here into the web-aligned survey schema
+  // (same value IDs as CoreHealth-FE). Fields not yet collected on mobile keep
+  // their web defaults and are filled in by the added survey steps.
+  FitnessSurvey get _survey => FitnessSurvey(
+        daysPerWeek: trainingDays,
+        trainingExperience: switch (fitnessExperience) {
+          _FitnessExperience.never || _FitnessExperience.lost => 'beginner',
+          _FitnessExperience.usedTo => 'intermediate',
+          _FitnessExperience.advanced => 'advanced',
+          null => 'beginner',
+        },
+        budget: switch (mealBudget) {
+          'Tiết kiệm' => 'low',
+          'Premium' => 'premium',
+          _ => 'moderate',
+        },
+        cookingTimeMinutes: switch (cookingTime) {
+          '<15 phút' => 15,
+          '30-45 phút' => 45,
+          _ => 30,
+        },
+        timelineWeeks: switch (selectedGoalTimeline) {
+          _GoalTimeline.one => 4,
+          _GoalTimeline.three => 12,
+          _GoalTimeline.six => 24,
+          _GoalTimeline.twelve => 48,
+        },
+      );
+
   DemoProfile get previewProfile {
     final typedAge = int.tryParse(ageController.text);
     final resolvedAge =
@@ -181,6 +210,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       nutritionPriorities: nutritionPriorities.toList(),
       plan: SubscriptionPlan.free,
       subscriptionMonths: 0,
+      survey: _survey,
     );
   }
 

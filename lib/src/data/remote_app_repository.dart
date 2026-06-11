@@ -671,6 +671,7 @@ class RemoteAppRepository implements AppRepository {
           : DateTime.tryParse(
               json['coreHealthMaxTrialExpiresAt'].toString(),
             ),
+      survey: FitnessSurvey.fromJson(json),
     );
   }
 
@@ -704,6 +705,10 @@ class RemoteAppRepository implements AppRepository {
             profile.subscriptionStartDate?.toIso8601String(),
         'coreHealthMaxTrialExpiresAt':
             profile.coreHealthMaxTrialExpiresAt?.toIso8601String(),
+        // Full web-aligned survey schema (same keys/value IDs as CoreHealth-FE)
+        // so the BE AI planner reads identical data from web or mobile.
+        ...profile.survey.toJson(),
+        'onboardingCompletedAt': DateTime.now().toIso8601String(),
       };
 
   WeightEntry _weightEntry(dynamic item) {
