@@ -1,4 +1,7 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import '../services/catalog_service.dart';
 import '../theme.dart';
 import '../widgets/visuals.dart';
 
@@ -23,7 +26,11 @@ class _ExerciseLibraryScreenState extends State<ExerciseLibraryScreen> {
     'Cardio'
   ];
 
-  final List<Map<String, dynamic>> _exercises = [
+  final CatalogService _catalog = CatalogService();
+
+  // Loaded from BE (/api/exercises) on open; the list below is an offline
+  // fallback used only if the backend is unreachable.
+  List<Map<String, dynamic>> _exercises = [
     {
       'name': 'Hít đất (Push-up)',
       'category': 'Ngực',
@@ -115,6 +122,45 @@ class _ExerciseLibraryScreenState extends State<ExerciseLibraryScreen> {
       'safety': 'Đáp nhẹ nhàng bằng mũi bàn chân để giảm phản lực lên đầu gối.'
     }
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final rows = await _catalog.exercises();
+      if (rows.isEmpty || !mounted) return;
+      setState(() {
+        _exercises = rows.map((e) {
+          List<String> instructions = const [];
+          final raw = e['instructionsJson'];
+          if (raw is String && raw.trim().isNotEmpty) {
+            try {
+              final parsed = jsonDecode(raw);
+              if (parsed is List) {
+                instructions = parsed.map((x) => x.toString()).toList();
+              }
+            } catch (_) {}
+          }
+          return <String, dynamic>{
+            'name': e['name'] ?? '',
+            'category': e['category'] ?? e['muscleGroup'] ?? '',
+            'difficulty': e['difficulty'] ?? '',
+            'calories': e['calories'] ?? 0,
+            'duration': e['sets'] ?? '',
+            'image': e['thumbnailUrl'] ?? e['videoUrl'] ?? '',
+            'instructions': instructions,
+            'safety': e['tips'] ?? '',
+          };
+        }).toList();
+      });
+    } catch (_) {
+      // Backend unreachable — keep the offline fallback list.
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
