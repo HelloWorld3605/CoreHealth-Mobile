@@ -66,6 +66,14 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   final Set<String> nutritionPriorities = {'Giàu protein', 'Món Việt'};
   String mealBudget = 'Cân bằng';
   String cookingTime = '15-30 phút';
+  // Web-aligned survey answers (stored as web value IDs, labelled in VN).
+  String priority = 'balanced'; // balanced | nutrition | training | health
+  String workoutLocation = 'gym'; // gym | home | outdoor
+  final Set<String> equipment = {'full-gym'};
+  int sessionMinutes = 60;
+  String preferredWorkoutTime = 'evening'; // morning|afternoon|evening|flexible
+  String dietType = 'high-protein';
+  String mealFrequency = '3 meals + 1 snack';
 
 @override
   void initState() {
@@ -108,6 +116,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             build: _allergyStep, canContinue: () => foodAllergies.isNotEmpty),
         _SurveyStep('Ngân sách & thời gian', _StepKind.choice,
             build: _mealPracticalStep),
+        _SurveyStep('Kiểu ăn', _StepKind.choice, build: _dietTypeStep),
+        _SurveyStep('Nhịp bữa ăn', _StepKind.choice, build: _mealFrequencyStep),
         _SurveyStep('Ưu tiên dinh dưỡng', _StepKind.choice,
             build: _nutritionPriorityStep,
             canContinue: () => nutritionPriorities.isNotEmpty),
@@ -131,8 +141,15 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         _SurveyStep('Cân nặng', _StepKind.measure, build: _weightStep),
         _SurveyStep('Mục tiêu cụ thể', _StepKind.measure,
             build: _goalTargetStep),
+        _SurveyStep('Ưu tiên', _StepKind.choice, build: _priorityStep),
         _SurveyStep('Tần suất', _StepKind.measure,
             build: _trainingFrequencyStep),
+        _SurveyStep('Thời lượng buổi tập', _StepKind.choice,
+            build: _sessionMinutesStep),
+        _SurveyStep('Nơi tập', _StepKind.choice, build: _workoutLocationStep),
+        _SurveyStep('Thiết bị', _StepKind.choice, build: _equipmentStep),
+        _SurveyStep('Giờ tập ưa thích', _StepKind.choice,
+            build: _workoutTimeStep),
         _SurveyStep('Chấn thương', _StepKind.choice, build: _injuryStep),
         _SurveyStep('Hoạt động', _StepKind.choice,
             build: _activityStep,
@@ -199,6 +216,13 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           _GoalTimeline.six => 24,
           _GoalTimeline.twelve => 48,
         },
+        priority: priority,
+        workoutLocation: workoutLocation,
+        equipment: equipment.toList(),
+        sessionMinutes: sessionMinutes,
+        preferredWorkoutTime: preferredWorkoutTime,
+        dietType: dietType,
+        mealFrequency: mealFrequency,
       );
 
   DemoProfile get previewProfile {
@@ -1690,6 +1714,165 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       ),
     );
   }
+
+  // ---------------------------------------------------------------------------
+  // Web-aligned extra survey steps (Tier 2b) — same value IDs as CoreHealth-FE.
+  // ---------------------------------------------------------------------------
+
+  Widget _singleChips(
+    List<(String, String)> opts,
+    String selected,
+    void Function(String) onPick,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 6, 4, 8),
+      child: Wrap(
+        spacing: 12,
+        runSpacing: 14,
+        children: opts
+            .map((o) => _ActivityChip(
+                  label: o.$2,
+                  selected: selected == o.$1,
+                  onTap: () => setState(() => onPick(o.$1)),
+                ))
+            .toList(),
+      ),
+    );
+  }
+
+  Widget _priorityStep(BuildContext context) => _StepFrame(
+        title: 'Kế hoạch nên ưu tiên điều gì?',
+        subtitle:
+            'CoreHealth dùng để cân chỉnh độ chặt giữa dinh dưỡng và tập luyện.',
+        child: _singleChips(
+          const [
+            ('balanced', 'Cân bằng'),
+            ('nutrition', 'Ưu tiên dinh dưỡng'),
+            ('training', 'Ưu tiên tập luyện'),
+            ('health', 'Ưu tiên sức khỏe'),
+          ],
+          priority,
+          (id) => priority = id,
+        ),
+      );
+
+  Widget _workoutLocationStep(BuildContext context) => _StepFrame(
+        title: 'Bạn tập ở đâu là chính?',
+        subtitle: 'Nơi tập quyết định bài tập và thiết bị coach gợi ý.',
+        child: _singleChips(
+          const [
+            ('gym', 'Phòng gym'),
+            ('home', 'Tại nhà'),
+            ('outdoor', 'Ngoài trời'),
+          ],
+          workoutLocation,
+          (id) => workoutLocation = id,
+        ),
+      );
+
+  Widget _equipmentStep(BuildContext context) {
+    const opts = [
+      ('full-gym', 'Đủ thiết bị gym'),
+      ('dumbbells', 'Tạ đơn'),
+      ('barbell', 'Tạ đòn'),
+      ('machines', 'Máy tập'),
+      ('bands', 'Dây kháng lực'),
+      ('bodyweight', 'Bodyweight'),
+      ('cardio-machine', 'Máy cardio'),
+    ];
+    return _StepFrame(
+      title: 'Bạn có sẵn thiết bị nào?',
+      subtitle: 'Chọn tất cả những gì bạn dùng được.',
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(4, 6, 4, 8),
+        child: Wrap(
+          spacing: 12,
+          runSpacing: 14,
+          children: opts.map((o) {
+            final selected = equipment.contains(o.$1);
+            return _ActivityChip(
+              label: o.$2,
+              selected: selected,
+              onTap: () => setState(() {
+                if (selected) {
+                  equipment.remove(o.$1);
+                } else {
+                  equipment.add(o.$1);
+                }
+              }),
+            );
+          }).toList(),
+        ),
+      ),
+    );
+  }
+
+  Widget _sessionMinutesStep(BuildContext context) {
+    const opts = [30, 45, 60, 75, 90];
+    return _StepFrame(
+      title: 'Mỗi buổi tập kéo dài bao lâu?',
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(4, 6, 4, 8),
+        child: Wrap(
+          spacing: 12,
+          runSpacing: 14,
+          children: opts
+              .map((m) => _ActivityChip(
+                    label: '$m phút',
+                    selected: sessionMinutes == m,
+                    onTap: () => setState(() => sessionMinutes = m),
+                  ))
+              .toList(),
+        ),
+      ),
+    );
+  }
+
+  Widget _workoutTimeStep(BuildContext context) => _StepFrame(
+        title: 'Bạn thích tập vào lúc nào?',
+        child: _singleChips(
+          const [
+            ('morning', 'Buổi sáng'),
+            ('afternoon', 'Buổi chiều'),
+            ('evening', 'Buổi tối'),
+            ('flexible', 'Linh hoạt'),
+          ],
+          preferredWorkoutTime,
+          (id) => preferredWorkoutTime = id,
+        ),
+      );
+
+  Widget _dietTypeStep(BuildContext context) => _StepFrame(
+        title: 'Kiểu ăn bạn muốn theo?',
+        subtitle: 'Định hình cấu trúc macro và món ăn trong thực đơn.',
+        child: _singleChips(
+          const [
+            ('balanced', 'Cân bằng'),
+            ('high-protein', 'Giàu protein'),
+            ('mediterranean', 'Địa Trung Hải'),
+            ('low-carb', 'Ít carb'),
+            ('plant-forward', 'Ưu tiên thực vật'),
+            ('keto', 'Keto'),
+          ],
+          dietType,
+          (id) => dietType = id,
+        ),
+      );
+
+  Widget _mealFrequencyStep(BuildContext context) => _StepFrame(
+        title: 'Bạn muốn ăn mấy bữa mỗi ngày?',
+        child: _singleChips(
+          const [
+            ('2 meals', '2 bữa'),
+            ('3 meals', '3 bữa'),
+            ('3 meals + 1 snack', '3 bữa + 1 phụ'),
+            ('4 meals', '4 bữa'),
+            ('flexible', 'Linh hoạt'),
+          ],
+          mealFrequency,
+          (id) => mealFrequency = id,
+        ),
+      );
 
   Widget _paywallStep(BuildContext context) {
     return Column(
