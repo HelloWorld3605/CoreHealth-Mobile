@@ -1,28 +1,33 @@
 import 'dart:convert';
 
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 
-/// SePay payment verification service.
-/// Build with: --dart-define=SEPAY_API_TOKEN=<token>
+import 'environment_config.dart';
+
+/// Payment verification via the shared CoreHealth backend.
 ///
 /// Flow:
 ///   1. Generate a unique reference (e.g. CH1748123456).
 ///   2. Display a VietQR code via [vietQrUrl] — user scans with any VN banking app.
-///   3. Poll [checkPaymentReceived] every few seconds until amount_in matches.
+///   3. Poll [checkPaymentReceived] which asks the backend (POST /payments/verify)
+///      whether the matching transfer has arrived.
 ///
-/// Production note: move the token to your backend proxy so it's never
-/// bundled in the APK/IPA.  The app would call
-///   POST /api/payments/verify?reference=CH...&amount=99000
-/// and the backend calls SePay.
+/// The SePay API token lives server-side only — it is never bundled in the app.
+/// The bank account number/owner used to render the QR are public details.
+///
+/// NOTE: /payments/verify confirms an order that was created server-side. Full
+/// auto-confirmation requires the create-order flow (GHN address + create-order);
+/// until then this returns false (the UI falls back to manual confirmation).
 class SepayService {
   SepayService._();
 
   static final SepayService instance = SepayService._();
 
-  // Injected at build time: --dart-define=SEPAY_API_TOKEN=xxx
-  static const _token =
-      String.fromEnvironment('SEPAY_API_TOKEN', defaultValue: '');
+  static const _storage = FlutterSecureStorage();
+  static const _jwtKey = 'corehealth_jwt';
 
+  // Public VietQR display details (NOT secrets).
   static const _account = String.fromEnvironment(
     'SEPAY_ACCOUNT_NUMBER',
     defaultValue: '4444815072005',
@@ -35,7 +40,6 @@ class SepayService {
     'SEPAY_ACCOUNT_NAME',
     defaultValue: 'NGUYEN HUU TUNG',
   );
-  static const _baseUrl = 'https://my.sepay.vn/userapi';
 
   // -------------------------------------------------------------------------
   // VietQR image URL (works with all VN banking apps, MoMo, ZaloPay, etc.)
@@ -49,40 +53,29 @@ class SepayService {
   }
 
   // -------------------------------------------------------------------------
-  // Check if a payment with this reference has arrived
+  // Ask the backend whether this payment has arrived (server-side SePay check)
   // -------------------------------------------------------------------------
 
-  /// Returns `true` when a transaction whose `transaction_content` contains
-  /// [reference] (case-insensitive) and whose [amount_in] >= [amountVnd].
   Future<bool> checkPaymentReceived({
     required String reference,
     required int amountVnd,
   }) async {
-    if (_token.isEmpty) return false; // token not injected — skip
     try {
-      final uri = Uri.parse(
-        '$_baseUrl/transactions/list'
-        '?account_number=$_account&limit=20&sort=DESC',
-      );
+      final jwt = await _storage.read(key: _jwtKey);
+      if (jwt == null || jwt.isEmpty) return false;
       final res = await http
-          .get(uri, headers: {'Authorization': 'Bearer $_token'})
+          .post(
+            Uri.parse('${EnvironmentConfig.apiBaseUrl}/payments/verify'),
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $jwt',
+            },
+            body: jsonEncode({'reference': reference, 'amountVnd': amountVnd}),
+          )
           .timeout(const Duration(seconds: 8));
-
       if (res.statusCode != 200) return false;
-
-      final body = jsonDecode(res.body) as Map<String, dynamic>;
-      final transactions = body['transactions'] as List? ?? [];
-      final refLower = reference.toLowerCase();
-
-      for (final tx in transactions) {
-        final content =
-            (tx['transaction_content'] as String? ?? '').toLowerCase();
-        final amountIn = (tx['amount_in'] as num? ?? 0).toInt();
-        if (content.contains(refLower) && amountIn >= amountVnd) {
-          return true;
-        }
-      }
-      return false;
+      final body = jsonDecode(res.body);
+      return body is Map && body['paid'] == true;
     } catch (_) {
       return false;
     }
