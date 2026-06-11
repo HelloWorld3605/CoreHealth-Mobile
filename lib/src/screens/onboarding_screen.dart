@@ -80,46 +80,66 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     });
   }
 
-  List<_SurveyStep> get steps {
-    final baseSteps = [
-      const _SurveyStep('Thông tin cơ bản', _StepKind.form),
-      const _SurveyStep('Mục tiêu', _StepKind.choice),
-    ];
-
-    final isFatLoss = selectedGoalCategory == _GoalCategory.fatLoss;
-    final isMuscleGain = selectedGoalCategory == _GoalCategory.muscleGain;
-
-    if (isFatLoss || selectedGoalCategory == _GoalCategory.weightGain) {
-      baseSteps.addAll([
-        const _SurveyStep('Khảo sát ăn uống', _StepKind.section),
-        const _SurveyStep('Khẩu vị', _StepKind.choice),
-        const _SurveyStep('Dị ứng', _StepKind.choice),
-        const _SurveyStep('Ngân sách & thời gian', _StepKind.choice),
-        const _SurveyStep('Ưu tiên dinh dưỡng', _StepKind.choice),
-      ]);
-    }
-
-    if (isMuscleGain || selectedGoalCategory == _GoalCategory.performance) {
-      baseSteps.addAll([
-        const _SurveyStep('Khảo sát thể lực', _StepKind.section),
-        const _SurveyStep('Giới tính', _StepKind.choice),
-        const _SurveyStep('Vùng tập trung', _StepKind.choice),
-        const _SurveyStep('Tần suất', _StepKind.measure),
-        const _SurveyStep('Chấn thương', _StepKind.choice),
-        const _SurveyStep('Hoạt động', _StepKind.choice),
-        const _SurveyStep('Kinh nghiệm', _StepKind.choice),
-      ]);
-    }
-
-    baseSteps.addAll([
-      const _SurveyStep('Chiều cao', _StepKind.measure),
-      const _SurveyStep('Năm sinh', _StepKind.measure),
-      const _SurveyStep('Cân nặng', _StepKind.measure),
-      const _SurveyStep('Mục tiêu cụ thể', _StepKind.measure),
-    ]);
-
-    return baseSteps;
+  // Single source of truth: each step carries its title, kind, renderer and
+  // advance-validator. No separate index switch — title always matches content.
+  // De-branched (every user answers nutrition AND fitness) to mirror the web
+  // onboarding, so both platforms collect the same profile.
+  bool get _basicValid {
+    final age = int.tryParse(ageController.text) ?? 0;
+    return nameController.text.trim().isNotEmpty && age >= 10 && age <= 120;
   }
+
+  List<_SurveyStep> get steps => [
+        _SurveyStep('Thông tin cơ bản', _StepKind.form,
+            build: _basicInfoStep, canContinue: () => _basicValid),
+        _SurveyStep('Mục tiêu', _StepKind.choice, build: _goalStep),
+        _SurveyStep('Đánh giá bữa ăn', _StepKind.section,
+            build: (_) => const _SectionIntroStep(
+                  kicker: 'Phần 1',
+                  title: 'Đánh giá bữa ăn',
+                  subtitle:
+                      'Khẩu vị, thói quen và dị ứng sẽ định hình meal plan.',
+                  icon: Icons.restaurant_menu_rounded,
+                )),
+        _SurveyStep('Khẩu vị', _StepKind.choice,
+            build: _dietaryPreferenceStep,
+            canContinue: () => dietaryPreferences.isNotEmpty),
+        _SurveyStep('Dị ứng', _StepKind.choice,
+            build: _allergyStep, canContinue: () => foodAllergies.isNotEmpty),
+        _SurveyStep('Ngân sách & thời gian', _StepKind.choice,
+            build: _mealPracticalStep),
+        _SurveyStep('Ưu tiên dinh dưỡng', _StepKind.choice,
+            build: _nutritionPriorityStep,
+            canContinue: () => nutritionPriorities.isNotEmpty),
+        _SurveyStep('Đánh giá thể lực', _StepKind.section,
+            build: (_) => const _SectionIntroStep(
+                  kicker: 'Phần 2',
+                  title: 'Đánh giá thể lực',
+                  subtitle:
+                      'Mục tiêu, vóc dáng và lịch tập giúp cá nhân hóa workout.',
+                  icon: Icons.fitness_center_rounded,
+                )),
+        _SurveyStep('Giới tính', _StepKind.choice, build: _genderStep),
+        _SurveyStep('Vùng tập trung', _StepKind.choice,
+            build: _bodyFocusStep, canContinue: () => focusParts.isNotEmpty),
+        _SurveyStep('Chiều cao', _StepKind.measure, build: _heightStep),
+        _SurveyStep('Năm sinh', _StepKind.measure, build: _birthYearStep),
+        _SurveyStep('Vóc dáng mong muốn', _StepKind.choice,
+            build: _desiredBodyStep),
+        _SurveyStep('Vóc dáng hiện tại', _StepKind.choice,
+            build: _currentBodyStep),
+        _SurveyStep('Cân nặng', _StepKind.measure, build: _weightStep),
+        _SurveyStep('Mục tiêu cụ thể', _StepKind.measure,
+            build: _goalTargetStep),
+        _SurveyStep('Tần suất', _StepKind.measure,
+            build: _trainingFrequencyStep),
+        _SurveyStep('Chấn thương', _StepKind.choice, build: _injuryStep),
+        _SurveyStep('Hoạt động', _StepKind.choice,
+            build: _activityStep,
+            canContinue: () => activityPreferences.isNotEmpty),
+        _SurveyStep('Kinh nghiệm', _StepKind.choice,
+            build: _experienceStep, canContinue: () => fitnessExperience != null),
+      ];
 
   @override
   void dispose() {
@@ -228,19 +248,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   double get _resolvedTargetWeightKg =>
       targetWeightKg ?? _defaultTargetWeightKg;
 
-  bool get _canContinue {
-    final age = int.tryParse(ageController.text) ?? 0;
-    return switch (currentStep) {
-      0 => nameController.text.trim().isNotEmpty && age >= 10 && age <= 120,
-      3 => dietaryPreferences.isNotEmpty,
-      4 => foodAllergies.isNotEmpty,
-      6 => nutritionPriorities.isNotEmpty,
-      9 => focusParts.isNotEmpty,
-      18 => activityPreferences.isNotEmpty,
-      19 => fitnessExperience != null,
-      _ => true,
-    };
-  }
+  bool get _canContinue => steps[currentStep].canContinue?.call() ?? true;
 
   Future<void> _nextStep() async {
     if (!_canContinue) {
@@ -350,7 +358,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 child: KeyedSubtree(
                   key: ValueKey(currentStep),
                   child: isSection
-                      ? _buildStep(context)
+                      ? steps[currentStep].build!(context)
                       : SingleChildScrollView(
                           physics: const BouncingScrollPhysics(),
                           padding: EdgeInsets.fromLTRB(
@@ -361,7 +369,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                           ),
                           child: AdaptiveContent(
                             maxWidth: 520,
-                            child: _buildStep(context),
+                            child: steps[currentStep].build!(context),
                           ),
                         ),
                 ),
@@ -377,42 +385,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         ),
       ),
     );
-  }
-
-  Widget _buildStep(BuildContext context) {
-    return switch (currentStep) {
-      0 => _basicInfoStep(context),
-      1 => _goalStep(context),
-      2 => const _SectionIntroStep(
-          kicker: 'Phần 1',
-          title: 'Đánh giá bữa ăn',
-          subtitle: 'Khẩu vị, thói quen và dị ứng sẽ định hình meal plan.',
-          icon: Icons.restaurant_menu_rounded,
-        ),
-      3 => _dietaryPreferenceStep(context),
-      4 => _allergyStep(context),
-      5 => _mealPracticalStep(context),
-      6 => _nutritionPriorityStep(context),
-      7 => const _SectionIntroStep(
-          kicker: 'Phần 2',
-          title: 'Đánh giá thể lực',
-          subtitle: 'Mục tiêu, vóc dáng và lịch tập giúp cá nhân hóa workout.',
-          icon: Icons.fitness_center_rounded,
-        ),
-      8 => _genderStep(context),
-      9 => _bodyFocusStep(context),
-      10 => _heightStep(context),
-      11 => _birthYearStep(context),
-      12 => _desiredBodyStep(context),
-      13 => _currentBodyStep(context),
-      14 => _weightStep(context),
-      15 => _goalTargetStep(context),
-      16 => _trainingFrequencyStep(context),
-      17 => _injuryStep(context),
-      18 => _activityStep(context),
-      19 => _experienceStep(context),
-      _ => _experienceStep(context),
-    };
   }
 
   Widget _basicInfoStep(BuildContext context) {
@@ -1960,9 +1932,15 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 enum _StepKind { form, choice, measure, story, section, loading }
 
 class _SurveyStep {
-  const _SurveyStep(this.title, this.kind);
+  const _SurveyStep(this.title, this.kind, {this.build, this.canContinue});
   final String title;
   final _StepKind kind;
+
+  /// Renders this step. Single source of truth — no separate index switch.
+  final Widget Function(BuildContext)? build;
+
+  /// Whether the user may advance from this step. Null = always allowed.
+  final bool Function()? canContinue;
 }
 
 class _SurveyTopBar extends StatelessWidget {
