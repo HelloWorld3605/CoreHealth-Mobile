@@ -1,10 +1,14 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:web_socket_channel/web_socket_channel.dart';
 
+import '../services/environment_config.dart';
 import '../services/sepay_service.dart';
 import '../theme.dart';
 import '../widgets/adaptive.dart';
@@ -186,6 +190,8 @@ class _PaymentScreenState extends State<PaymentScreen>
   late final AnimationController _successCtrl;
   late final Animation<double> _successScale;
   Timer? _pollTimer;
+  WebSocketChannel? _ws;
+  StreamSubscription<dynamic>? _wsSub;
   int _waitedSeconds = 0;
 
   static const _timeoutSeconds = 600;
@@ -220,16 +226,21 @@ class _PaymentScreenState extends State<PaymentScreen>
   @override
   void dispose() {
     _pollTimer?.cancel();
+    _closeWs();
     _successCtrl.dispose();
     super.dispose();
   }
 
   void _startPolling() {
     _waitedSeconds = 0;
+    // Real-time path: listen for the backend's payment_confirmed push.
+    unawaited(_connectWs());
+    // Fallback path: poll /payments/verify in case the socket is unavailable.
     _pollTimer = Timer.periodic(const Duration(seconds: 3), (_) async {
       _waitedSeconds += 3;
       if (_waitedSeconds >= _timeoutSeconds) {
         _pollTimer?.cancel();
+        _closeWs();
         if (mounted) setState(() => _state = _PayState.timeout);
         return;
       }
@@ -238,13 +249,56 @@ class _PaymentScreenState extends State<PaymentScreen>
         reference: _reference,
         amountVnd: widget.amountK * 1000,
       );
-      if (paid && mounted) {
-        _pollTimer?.cancel();
-        widget.onSuccess();
-        setState(() => _state = _PayState.success);
-        _successCtrl.forward();
-      }
+      if (paid) _onPaid();
     });
+  }
+
+  /// Shared success handler — invoked by either the WebSocket push or the poll.
+  void _onPaid() {
+    if (!mounted || _state == _PayState.success) return;
+    _pollTimer?.cancel();
+    _closeWs();
+    widget.onSuccess();
+    setState(() => _state = _PayState.success);
+    _successCtrl.forward();
+  }
+
+  // Real-time payment notifications: wss://<host>/ws/payments?reference=...
+  // Connect, authenticate with the JWT, then wait for payment_confirmed.
+  Future<void> _connectWs() async {
+    try {
+      final jwt = await const FlutterSecureStorage().read(key: 'corehealth_jwt');
+      if (jwt == null || jwt.isEmpty) return; // unauthenticated → poll only
+      final channel = WebSocketChannel.connect(Uri.parse(_wsUrl(_reference)));
+      _ws = channel;
+      channel.sink.add(jsonEncode({'type': 'auth', 'token': jwt}));
+      _wsSub = channel.stream.listen(
+        (data) {
+          try {
+            final msg = jsonDecode(data as String);
+            if (msg is Map && msg['event'] == 'payment_confirmed') {
+              _onPaid();
+            }
+          } catch (_) {/* ignore malformed frames */}
+        },
+        onError: (_) {/* socket failed → poll remains the fallback */},
+        cancelOnError: true,
+      );
+    } catch (_) {/* connect failed → poll remains the fallback */}
+  }
+
+  void _closeWs() {
+    _wsSub?.cancel();
+    _wsSub = null;
+    _ws?.sink.close();
+    _ws = null;
+  }
+
+  String _wsUrl(String reference) {
+    // apiBaseUrl is https://host/api ; the socket lives at host root /ws/payments.
+    var base = EnvironmentConfig.apiBaseUrl.replaceFirst(RegExp(r'^http'), 'ws');
+    base = base.replaceFirst(RegExp(r'/api/?$'), '');
+    return '$base/ws/payments?reference=${Uri.encodeQueryComponent(reference)}';
   }
 
   Future<void> _confirm() async {
@@ -301,6 +355,7 @@ class _PaymentScreenState extends State<PaymentScreen>
         waitedSeconds: _waitedSeconds,
         onCancel: () {
           _pollTimer?.cancel();
+          _closeWs();
           setState(() => _state = _PayState.selecting);
         },
       );
