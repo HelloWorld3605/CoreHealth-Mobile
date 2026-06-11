@@ -6,6 +6,16 @@ class EnvironmentConfig {
     defaultValue: 'development',
   );
 
+  /// Shared backend base URL (includes the `/api` prefix). Injected via
+  /// --dart-define=COREHEALTH_API_BASE_URL=...; defaults to production.
+  static const _apiBaseUrl = String.fromEnvironment(
+    'COREHEALTH_API_BASE_URL',
+    defaultValue: 'https://api.corehealth.page/api',
+  );
+
+  /// Backend base URL used by the remote repository and AI services.
+  static String get apiBaseUrl => _apiBaseUrl;
+
   /// Returns true if running in development or local environment.
   static bool get isDevelopment =>
       _environment.toLowerCase() == 'development' ||

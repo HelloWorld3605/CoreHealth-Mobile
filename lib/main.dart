@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -7,8 +6,8 @@ import 'package:flutter/material.dart';
 import 'src/app_controller.dart';
 import 'src/data/app_repository.dart';
 import 'src/data/memory_app_repository.dart';
-import 'src/data/postgres_app_repository.dart';
 import 'src/data/remote_app_repository.dart';
+import 'src/services/environment_config.dart';
 import 'src/models.dart';
 import 'src/screens/auth_screen.dart';
 import 'src/screens/home_shell.dart';
@@ -70,51 +69,18 @@ class _CoreHealthAppLoaderState extends State<CoreHealthAppLoader> {
 }
 
 Future<AppRepository> _createRepository() async {
-  const apiBaseUrl = String.fromEnvironment('COREHEALTH_API_BASE_URL');
-  if (apiBaseUrl.isNotEmpty) {
-    final remote = RemoteAppRepository(baseUrl: apiBaseUrl);
-    await remote.init();
-    return remote;
-  }
-
-  const configuredHost = String.fromEnvironment('COREHEALTH_POSTGRES_HOST');
-  final host = configuredHost.isNotEmpty
-      ? configuredHost
-      : Platform.isAndroid
-          ? '10.0.2.2'
-          : 'localhost';
-  const database = String.fromEnvironment(
-    'COREHEALTH_POSTGRES_DATABASE',
-    defaultValue: 'corehealth',
-  );
-  const username = String.fromEnvironment(
-    'COREHEALTH_POSTGRES_USER',
-    defaultValue: 'postgres',
-  );
-  const password = String.fromEnvironment('COREHEALTH_POSTGRES_PASSWORD');
-  const port = int.fromEnvironment(
-    'COREHEALTH_POSTGRES_PORT',
-    defaultValue: 5432,
-  );
-  final postgres = PostgresAppRepository(
-    host: host,
-    port: port,
-    database: database,
-    username: username,
-    password: password,
-  );
-  try {
-    await postgres.init().timeout(const Duration(seconds: 3));
-    return postgres;
-  } catch (error, stackTrace) {
-    if (kReleaseMode) rethrow;
-    debugPrint(
-      'Postgres unavailable at $host:$port; using in-memory repository. '
-      'Original error: $error',
-    );
-    debugPrintStack(stackTrace: stackTrace);
+  // Single source of truth: the shared CoreHealth backend. The app never
+  // connects to Postgres directly and embeds no third-party secrets.
+  // Debug builds may opt into an offline in-memory repository for UI work via
+  // --dart-define=COREHEALTH_OFFLINE=true; release builds always go remote.
+  const offline = bool.fromEnvironment('COREHEALTH_OFFLINE');
+  if (!kReleaseMode && offline) {
     return MemoryAppRepository();
   }
+
+  final remote = RemoteAppRepository(baseUrl: EnvironmentConfig.apiBaseUrl);
+  await remote.init();
+  return remote;
 }
 
 class CoreHealthApp extends StatelessWidget {
