@@ -9,6 +9,7 @@ import 'data/app_repository.dart';
 import 'demo_data.dart';
 import 'models.dart';
 import 'services/ai_service.dart';
+import 'services/catalog_service.dart';
 import 'services/food_scan_service.dart';
 import 'services/notification_service.dart';
 import 'services/shopping_list_generator.dart';
@@ -41,6 +42,9 @@ class AppController extends ChangeNotifier {
   Set<int> _completedMealDays = const {};
   List<Product> _cart = const [];
   List<OrderSummary> _orders = const [];
+  final CatalogService _catalog = CatalogService();
+  // Shop catalog from BE (/api/shop/products); DemoData is the offline fallback.
+  List<Product> _products = DemoData.products;
   List<TokenTransaction> _tokenTransactions = const [];
   UserSettings _settings = const UserSettings();
   String? _pendingVerificationEmail;
@@ -86,6 +90,29 @@ class AppController extends ChangeNotifier {
   List<MealItem> get todayMeals => _currentMealPlan?.meals ?? DemoData.todayMeals;
   List<OrderSummary> get orders => List.unmodifiable(_orders);
   List<Product> get cart => List.unmodifiable(_cart);
+  List<Product> get products => List.unmodifiable(_products);
+
+  // Loads the shop catalog from BE; keeps the DemoData fallback on failure.
+  Future<void> _loadProducts() async {
+    try {
+      final rows = await _catalog.products();
+      if (rows.isEmpty) return;
+      _products = rows
+          .map((e) => Product(
+                id: (e['id'] ?? '').toString(),
+                nameVi: (e['name_vi'] ?? e['nameVi'] ?? '').toString(),
+                categoryId: (e['category_id'] ?? e['categoryId'] ?? '').toString(),
+                unit: (e['unit'] ?? '').toString(),
+                priceK: ((e['price_k'] ?? e['priceK']) as num?)?.toInt() ?? 0,
+                imageUrl: (e['image_url'] ?? e['imageUrl'] ?? '').toString(),
+                hot: e['hot'] == true,
+              ))
+          .toList();
+      notifyListeners();
+    } catch (_) {
+      // Backend unreachable — keep the DemoData fallback.
+    }
+  }
   List<TokenTransaction> get tokenTransactions =>
       List.unmodifiable(_tokenTransactions);
   UserSettings get settings => _settings;
@@ -212,6 +239,9 @@ class AppController extends ChangeNotifier {
 
     _isReady = true;
     notifyListeners();
+
+    // Load the shop catalog from BE (public endpoint, no auth needed).
+    unawaited(_loadProducts());
 
     if (_stage == AppStage.home) {
       _refreshInsightsBackground();

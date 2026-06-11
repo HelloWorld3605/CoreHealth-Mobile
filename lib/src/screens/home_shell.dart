@@ -4369,7 +4369,8 @@ class _ShopScreenState extends State<ShopScreen>
     final layout = PhoneLayout.of(context);
     final isCompact = layout.isCompact;
     final horizontalPadding = layout.horizontalPadding;
-    final products = DemoData.products.where((product) {
+    final allProducts = CoreHealthScope.of(context).products;
+    final products = allProducts.where((product) {
       final matchesCategory =
           category == 'all' || product.categoryId == category;
       final query = searchQuery.toLowerCase();
@@ -4377,7 +4378,7 @@ class _ShopScreenState extends State<ShopScreen>
       return matchesCategory && matchesSearch;
     }).toList();
     final featured =
-        DemoData.products.where((product) => product.hot).take(4).toList();
+        allProducts.where((product) => product.hot).take(4).toList();
     final showHighlights = category == 'all' && searchQuery.isEmpty;
 
     final bottomPad =
